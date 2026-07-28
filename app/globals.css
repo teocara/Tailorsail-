@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/*
+ * Tailorsail design tokens.
+ *
+ * Two palettes live here. The default is the main brand — deep navy, sea
+ * glass, warm sand. `[data-brand="crew"]` overrides the accent ramp for the
+ * Tailorsail Crew sub-brand, which shares this layout shell but reads
+ * brighter and higher-contrast. Any component using `--accent-*` therefore
+ * re-skins itself inside a Crew route with no component-level branching.
+ */
+@theme {
+  /* Brand — deep navy through to pale sea glass */
+  --color-navy-950: #050d1a;
+  --color-navy-900: #0a1628;
+  --color-navy-800: #12233d;
+  --color-navy-700: #1b3454;
+  --color-navy-600: #274a72;
+  --color-navy-500: #37648f;
+
+  --color-sea-500: #2f8f8a;
+  --color-sea-400: #4baaa4;
+  --color-sea-300: #7cc7c1;
+  --color-sea-200: #aadfda;
+  --color-sea-100: #d6f0ee;
+
+  --color-sand-500: #b8934f;
+  --color-sand-400: #d4b678;
+  --color-sand-300: #e5d2ac;
+  --color-sand-200: #f0e5d0;
+  --color-sand-100: #f8f3e9;
+
+  /* Semantic */
+  --color-ink: var(--color-navy-900);
+  --color-ink-muted: #4a5b70;
+  --color-surface: #ffffff;
+  --color-surface-sunk: var(--color-sand-100);
+  --color-line: #e2e0da;
+
+  --color-positive: #2d7d54;
+  --color-caution: #a8701c;
+  --color-critical: #a83232;
+
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 0.75rem;
+}
+
+:root {
+  --accent-strong: var(--color-sea-500);
+  --accent: var(--color-sea-400);
+  --accent-soft: var(--color-sea-100);
+  --accent-contrast: #ffffff;
+}
+
+/* Tailorsail Crew — brighter, higher energy, same shell */
+[data-brand="crew"] {
+  --accent-strong: #d94f2b;
+  --accent: #f2703f;
+  --accent-soft: #ffe8dd;
+  --accent-contrast: #ffffff;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-synthesis-weight: none;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+/* Wide content (price tables, itineraries) scrolls inside its own box rather
+   than pushing the page sideways on small screens. */
+.scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Shared form control. Defined once here rather than repeated across every
+   input, because inconsistent form styling is the fastest way to make a
+   booking flow feel untrustworthy. */
+.input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: inherit;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent-strong);
+}
+
+.input::placeholder {
+  color: var(--color-ink-muted);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
