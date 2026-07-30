@@ -123,7 +123,7 @@ prisma/
 
 ```bash
 npm test          # 101 unit tests
-npm run test:e2e  # 4 Playwright smoke tests
+npm run test:e2e  # 15 Playwright tests
 npm run build     # typecheck + production build
 ```
 

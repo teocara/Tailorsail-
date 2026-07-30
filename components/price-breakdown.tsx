@@ -110,6 +110,15 @@ function PriceGroup({
 
   const subtotal = lines.reduce((acc, l) => acc + l.amountCents, 0);
 
+  /*
+    A one-line group is already its own subtotal, and repeating the figure
+    reads as a second charge — the refundable deposit showed €2,000 twice.
+    For the same reason the group note is redundant when the only line
+    carries a note saying the same thing.
+  */
+  const showSubtotal = lines.length > 1;
+  const showNote = Boolean(note) && (lines.length > 1 || !lines[0].note);
+
   return (
     <>
       <tr>
@@ -144,18 +153,20 @@ function PriceGroup({
           </td>
         </tr>
       ))}
-      <tr>
-        <td className="px-5 pb-2 pt-1">
-          {note ? (
-            <p className="max-w-md text-xs text-[var(--color-ink-muted)]">
-              {note}
-            </p>
-          ) : null}
-        </td>
-        <td className="whitespace-nowrap px-5 pb-2 pt-1 text-right text-sm font-medium tabular-nums">
-          {formatCents(subtotal)}
-        </td>
-      </tr>
+      {showNote || showSubtotal ? (
+        <tr>
+          <td className="px-5 pb-2 pt-1">
+            {showNote ? (
+              <p className="max-w-md text-xs text-[var(--color-ink-muted)]">
+                {note}
+              </p>
+            ) : null}
+          </td>
+          <td className="whitespace-nowrap px-5 pb-2 pt-1 text-right text-sm font-medium tabular-nums">
+            {showSubtotal ? formatCents(subtotal) : null}
+          </td>
+        </tr>
+      ) : null}
     </>
   );
 }
