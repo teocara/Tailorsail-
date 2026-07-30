@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { findTrips } from "@/lib/trips";
 import { TripGrid } from "@/components/trip-card";
 import { SearchBox } from "@/components/search-box";
+import { COURSE_CARD_SELECT } from "@/lib/public-select";
 import {
   ButtonLink,
   Card,
@@ -40,7 +41,11 @@ export default async function HomePage() {
     }),
     findTrips({ excludeCrew: true, sort: "recommended", limit: 6 }),
     findTrips({ crewOnly: true, limit: 3 }),
-    db.course.findMany({ orderBy: { priceCents: "asc" }, take: 3 }),
+    db.course.findMany({
+      select: COURSE_CARD_SELECT,
+      orderBy: { priceCents: "asc" },
+      take: 3,
+    }),
   ]);
 
   return (

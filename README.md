@@ -70,7 +70,7 @@ They are compatible, but only under the merchant model, and only if the copy is 
 
 Three things keep that honest, and they are enforced in code rather than in a style guide:
 
-1. **Cost cannot reach a customer surface.** `buildCustomerQuote()` is the only pricing function public routes may call, and its return type has no cost or margin field. Internal price components are filtered inside it. Public queries in `lib/trips.ts` never select `netRateCents`. There is a unit test asserting the quote object contains no cost data, and a Playwright test asserting the rendered trip page doesn't either.
+1. **Cost cannot reach a customer surface.** Two gates, because one was not enough. `buildCustomerQuote()` gates the charter price — its return type has no cost or margin field, and internal price components are filtered inside it. But pages also read courses, add-ons and departures directly, and a bare `findMany()` returns the whole row: that is how our cost on a course once reached the homepage's payload while every pricing test passed. So `lib/public-select.ts` holds the selects every public route uses for those models, and a Playwright test walks **all twelve public routes** asserting none of them contains a cost or margin field.
 2. **No invented reference prices.** A struck-through "was" price renders only when `PriceHistory` proves it was genuinely charged and was the lowest in the prior 30 days — the EU Omnibus rule. `referencePriceCents()` returns `null` rather than inventing a saving.
 3. **Pricing signals are about the departure, never the shopper.** Season, lead time, occupancy, destination demand. No inferred willingness-to-pay profiling.
 

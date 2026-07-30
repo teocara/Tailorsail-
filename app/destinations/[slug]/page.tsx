@@ -45,7 +45,7 @@ export default async function DestinationPage({
     include: {
       region: true,
       readinessTasks: { orderBy: [{ weeksBefore: "desc" }, { order: "asc" }] },
-      courses: true,
+      courses: { select: { id: true, slug: true, name: true } },
     },
   });
 

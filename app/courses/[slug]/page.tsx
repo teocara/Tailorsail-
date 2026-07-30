@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { findTrips } from "@/lib/trips";
 import { formatCents } from "@/lib/money";
 import { TripGrid } from "@/components/trip-card";
+import { COURSE_DETAIL_SELECT } from "@/lib/public-select";
 import {
   ButtonLink,
   Card,
@@ -21,7 +22,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const course = await db.course.findUnique({ where: { slug } });
+  const course = await db.course.findUnique({
+    where: { slug },
+    select: { name: true },
+  });
   return { title: course?.name ?? "Course" };
 }
 
@@ -40,7 +44,7 @@ export default async function CoursePage({
 
   const course = await db.course.findUnique({
     where: { slug },
-    include: { destination: { select: { slug: true, name: true } } },
+    select: COURSE_DETAIL_SELECT,
   });
 
   if (!course) notFound();

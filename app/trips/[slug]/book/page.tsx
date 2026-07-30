@@ -7,6 +7,7 @@ import type { PriceComponentInput } from "@/lib/pricing/types";
 import { formatCents } from "@/lib/money";
 import { createBooking } from "@/app/actions/booking";
 import { PriceBreakdown } from "@/components/price-breakdown";
+import { ADDON_PUBLIC_SELECT, DEPARTURE_PUBLIC_SELECT } from "@/lib/public-select";
 import {
   Button,
   Card,
@@ -49,6 +50,7 @@ export default async function BookPage({
   const candidates = await db.departure.findMany({
     where: { tripId: trip.id, startDate: { gte: new Date() } },
     orderBy: { startDate: "asc" },
+    select: DEPARTURE_PUBLIC_SELECT,
   });
 
   const withSpace = candidates.filter(
@@ -92,6 +94,7 @@ export default async function BookPage({
     db.addOn.findMany({
       where: { OR: [{ global: true }, { tripId: trip.id }] },
       orderBy: [{ category: "asc" }, { sellPriceCents: "asc" }],
+      select: ADDON_PUBLIC_SELECT,
     }),
     getCurrentUser(),
   ]);

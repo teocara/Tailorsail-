@@ -110,17 +110,59 @@ test("the readiness checklist persists a toggle across a reload", async ({
   expect(nowDone).toBe(!wasDone);
 });
 
-test("the trip page never leaks cost or margin data", async ({ page }) => {
-  await page.goto("/trips/dalmatia-first-week-skippered");
-  const html = await page.content();
+/**
+ * Every customer-facing route, checked for cost and margin fields.
+ *
+ * This originally covered only the trip page, which was not enough: the
+ * homepage's course teaser used a bare `findMany()` and serialised
+ * `netRateCents` into the RSC payload — our cost on a course, sitting in the
+ * page source, while every pricing test passed. The leak was never in the
+ * pricing path, so a test aimed at the pricing path could not find it.
+ *
+ * Walking the whole public surface is what actually catches this class, so any
+ * new public route inherits the check for free by being added to the list.
+ */
+const PUBLIC_ROUTES = [
+  "/",
+  "/trips",
+  "/trips/dalmatia-first-week-skippered",
+  "/trips/dalmatia-first-week-skippered/book",
+  "/destinations",
+  "/destinations/ibiza-formentera",
+  "/crew",
+  "/courses",
+  "/courses/competent-crew",
+  "/operators/adriatic-blue",
+  "/bookings/TS-8F2K",
+  "/host",
+];
 
-  // The internal price component seeded on every trip must not appear, nor any
-  // of the field names that carry our cost.
-  expect(html).not.toContain("Operator net rate");
-  expect(html).not.toContain("netRateCents");
-  expect(html).not.toContain("marginCents");
-  expect(html).not.toContain("marginFloorPct");
-});
+const FORBIDDEN = [
+  "netRateCents",
+  "marginCents",
+  "marginFloorPct",
+  "marginCeilingPct",
+  "addOnsNetCents",
+  "netRateDiscountPct",
+  "commercialTier",
+  "allotmentBerths",
+  "Operator net rate",
+];
+
+for (const route of PUBLIC_ROUTES) {
+  test(`${route} leaks no cost or margin data`, async ({ page }) => {
+    const response = await page.goto(route);
+    expect(response?.status(), `${route} should render`).toBe(200);
+
+    const html = await page.content();
+    const found = FORBIDDEN.filter((field) => html.includes(field));
+
+    expect(
+      found,
+      `${route} exposed internal commercial fields: ${found.join(", ")}`,
+    ).toEqual([]);
+  });
+}
 
 test("the ops queue is reachable and prioritised", async ({ page }) => {
   await page.goto("/ops");

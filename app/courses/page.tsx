@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
 import { Card, Container, Eyebrow, Pill, Section } from "@/components/ui";
+import { COURSE_LIST_SELECT } from "@/lib/public-select";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Courses" };
@@ -23,7 +24,7 @@ const ORDER = ["FIRST_TIMER", "THEORY", "COMPETENT_CREW", "SKIPPER"] as const;
 
 export default async function CoursesPage() {
   const courses = await db.course.findMany({
-    include: { destination: { select: { slug: true, name: true } } },
+    select: COURSE_LIST_SELECT,
     orderBy: { durationHours: "asc" },
   });
 
