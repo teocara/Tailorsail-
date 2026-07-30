@@ -105,7 +105,7 @@ lib/
 
 prisma/
   schema.prisma               money is always integer cents
-  seed.ts  seed-data/         6 destinations, 8 operators, 18 trips, 228 departures
+  seed.ts  seed-data/         6 destinations, 8 operators, 18 trips, 216 departures
 ```
 
 ### Decisions worth knowing
