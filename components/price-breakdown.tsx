@@ -58,8 +58,13 @@ export function PriceBreakdown({
         </p>
       </div>
 
+      {/*
+        No min-width here. A 28rem floor pushed the amount column off a 375px
+        screen and behind a horizontal scroll — hiding the one column the whole
+        table exists for. Labels wrap instead; the amounts stay put.
+      */}
       <div className="scroll-x">
-        <table className="w-full min-w-[28rem] text-sm">
+        <table className="w-full text-sm">
           <tbody>
             <PriceGroup title="Payable at booking" lines={atBooking} />
             {atMarina.length > 0 ? (
