@@ -14,13 +14,14 @@
     "build:index": "tsx scripts/build-trip-index.ts",
     "verify:index": "tsx scripts/verify-trip-index.ts",
     "build:static": "npm run build:index && npm run verify:index && STATIC_EXPORT=1 next build",
-    "serve:static": "npx --yes serve out -l 4173",
+    "serve:static": "node scripts/serve-export.mjs",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "rm -f prisma/dev.db && npm run db:push && npm run db:seed",
     "yield:run": "tsx scripts/yield-run.ts",
-    "triage:run": "tsx scripts/triage-run.ts"
+    "triage:run": "tsx scripts/triage-run.ts",
+    "test:export": "playwright test -c playwright.export.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

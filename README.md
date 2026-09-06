@@ -70,7 +70,7 @@ They are compatible, but only under the merchant model, and only if the copy is 
 
 Three things keep that honest, and they are enforced in code rather than in a style guide:
 
-1. **Cost cannot reach a customer surface.** Two gates, because one was not enough. `buildCustomerQuote()` gates the charter price — its return type has no cost or margin field, and internal price components are filtered inside it. But pages also read courses, add-ons and departures directly, and a bare `findMany()` returns the whole row: that is how our cost on a course once reached the homepage's payload while every pricing test passed. So `lib/public-select.ts` holds the selects every public route uses for those models, and a Playwright test walks **all twelve public routes** asserting none of them contains a cost or margin field.
+1. **Cost cannot reach a customer surface.** Two gates, because one was not enough. `buildCustomerQuote()` gates the charter price — its return type has no cost or margin field, and internal price components are filtered inside it. But pages also read courses, add-ons and departures directly, and a bare `findMany()` returns the whole row: that is how our cost on a course once reached the homepage's payload while every pricing test passed. So `lib/public-select.ts` holds the selects every public route uses for those models, a Playwright test walks **every public route** on a running server, and `npm run test:export` scans **every file in the published build** — HTML, RSC payload, JSON catalogue and JS chunk alike — for the same field names.
 2. **No invented reference prices.** A struck-through "was" price renders only when `PriceHistory` proves it was genuinely charged and was the lowest in the prior 30 days — the EU Omnibus rule. `referencePriceCents()` returns `null` rather than inventing a saving.
 3. **Pricing signals are about the departure, never the shopper.** Season, lead time, occupancy, destination demand. No inferred willingness-to-pay profiling.
 
@@ -99,9 +99,20 @@ lib/
     generate-itinerary.ts     generate-readiness.ts   parse-listing.ts
     rate-negotiator.ts        pricing-advisor.ts      trip-finder.ts
     triage.ts                 nightly sweep (no API key needed)
-  trips.ts                    the single trip-search path
+  trips.ts                    the single trip-search path (the query half)
+  trip-filters.ts             its pure half — shared with the browser
+  trip-index.ts               client-side filtering of the prebuilt catalogue
+  trip-pricing.ts             the precomputed quotes a trip page can show
+  static-mode.ts              which build this is, and what that changes
+  render-mode.ts              per-request rendering, server build only
   verification.ts             trust badges derived from data, never authored
   yield-run.ts  ops.ts  session.ts  money.ts
+
+scripts/
+  build-trip-index.ts         writes public/trip-index.json
+  verify-trip-index.ts        fails the build if it disagrees with findTrips
+  serve-export.mjs            serves out/ the way GitHub Pages does
+  yield-run.ts  triage-run.ts
 
 prisma/
   schema.prisma               money is always integer cents
@@ -122,10 +133,19 @@ prisma/
 ## Testing
 
 ```bash
-npm test          # 101 unit tests
-npm run test:e2e  # 15 Playwright tests
-npm run build     # typecheck + production build
+npm test            # 116 unit tests
+npm run test:e2e    # 15 Playwright tests against a dev server
+npm run build       # typecheck + production build
+npm run build:static && npm run test:export   # the published build, audited as published
 ```
+
+`test:export` is the one worth knowing about. It walks the built `out/`
+directory and asserts that **no published file** — HTML, RSC payload, JSON
+catalogue or JS chunk — contains a cost or margin field name. Auditing the
+files rather than a render matters now that client components receive
+precomputed quotes as props: those land in the RSC payloads, which a test that
+only reads rendered HTML never opens. Confirmed by injection — leaking a net
+rate across the client boundary fails it.
 
 Unit tests cover the parts where being wrong is expensive: the quote arithmetic and its cost-leak guarantee, every yield multiplier plus floor/ceiling clamping, margin roll-ups, the Omnibus reference-price rule, verification expiry, filter composition, and the concierge routing policy across every category the schema can produce.
 
@@ -136,6 +156,8 @@ The AI modules are tested through their schemas — an implausible generation (a
 ## Operations
 
 ```bash
+npm run build:static # prerender the whole site to out/ for GitHub Pages
+npm run serve:static # serve out/ the way Pages does, under /Tailorsail-
 npm run yield:run    # reprice every future departure (cron-able)
 npm run triage:run   # find expiring docs, slow sellers, distressed inventory
 npm run db:studio    # inspect the database
@@ -154,3 +176,33 @@ Both scripts are deterministic and need no API key — the *finding* is SQL and 
 - **No physical boat inspection.** This one is a business limit, not a scope cut, and the product is explicit about it: verification is document-based (licence, insurance with expiry, safety declaration), continuously re-checked, and the badge copy says exactly what was checked. It never implies anyone visited the boat. A physical-inspection tier is a later, margin-funded addition.
 
 Migrations start at the next milestone — this build uses `prisma db push`.
+
+---
+
+## The published build
+
+`.github/workflows/pages.yml` prerenders the site to GitHub Pages. It is the
+same application, not a cut-down one: all 18 trips, the six cruising-ground
+briefings, the courses, the operators, the seeded bookings and the four ops
+screens, with search, faceted filters, party-size and departure repricing and
+the readiness checklist all working. What it cannot do is write — booking,
+concierge, host applications and the ops actions keep their controls, disabled,
+each saying what it would do locally.
+
+Three things make that possible, and they are the parts worth reading:
+
+- **`lib/render-mode.ts`** — `force-dynamic` cannot be conditional (Next reads
+  that config by static analysis), so `connection()` marks pages per-request in
+  the server build and is skipped when prerendering.
+- **`next.config.ts`** — the export fails if a single server action exists
+  anywhere in the module graph, so the five action modules are aliased to a
+  stub. The pages keep their ordinary imports.
+- **`lib/trip-filters.ts`** — the pure half of trip search, shared by
+  `findTrips` and by the browser filtering `trip-index.json`.
+  `scripts/verify-trip-index.ts` runs both over the seeded database across 55
+  filter sets and fails the build if they disagree.
+
+Enabling it is a repository setting: **Settings → Pages → Source: GitHub
+Actions**. The workflow also runs weekly, because `prisma/seed.ts` anchors on
+`new Date()` — a reseed rolls the departure dates forward, and without it the
+published site would slowly fill with weeks that have already sailed.

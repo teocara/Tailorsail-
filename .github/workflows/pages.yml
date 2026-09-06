@@ -1,0 +1,79 @@
+name: Deploy to GitHub Pages
+
+# The published build is a snapshot: it is prerendered against a freshly seeded
+# database. `prisma/seed.ts` anchors on `new Date()`, so every run reseeds
+# relative to that day and the departure dates roll forward on their own — which
+# is why this runs weekly as well as on push. Without that the site would
+# quietly fill up with weeks that have already sailed.
+on:
+  push:
+    branches:
+      - main
+      - claude/sailing-vacation-marketplace-ub9wyp
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+# One deployment at a time; let a run in progress finish rather than cancelling
+# it, so a half-uploaded artifact never becomes the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "file:./dev.db"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The build reads the database directly, so it has to exist first.
+      - name: Seed the database
+        run: |
+          npm run db:push
+          npm run db:seed
+
+      # Cheap, and they cover the arithmetic the published pages will show.
+      - name: Unit tests
+        run: npm test
+
+      # Writes public/trip-index.json, checks it agrees with findTrips across
+      # the filter matrix, then prerenders. The verify step is what stops a
+      # drifted index reaching the site.
+      - name: Build
+        run: npm run build:static
+
+      # Audits the directory that is about to be uploaded — the cost and margin
+      # scan runs over the published files themselves, including the RSC
+      # payloads, rather than over a render of them.
+      - name: Audit the export
+        run: npm run test:export
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
