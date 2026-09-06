@@ -4,10 +4,11 @@ import { db } from "../lib/db";
 /**
  * Reprice every future departure. Intended to run nightly on a cron.
  *
- * Anything the guardrails clamp is not published — it opens a PRICE_OUT_OF_BAND
- * task instead, so the founders see that the rules wanted to go somewhere they
- * were not allowed to rather than finding out from the margin report a month
- * later.
+ * A clamped price *is* published — it is inside the margin band by
+ * construction. Only a clamp that strains well past the bound opens a
+ * PRICE_OUT_OF_BAND task, so the founders see the rules pulling somewhere they
+ * are not allowed to go without having every routine clamp in front of them
+ * each morning.
  */
 async function main() {
   const started = Date.now();
