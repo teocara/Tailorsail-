@@ -124,6 +124,17 @@ export default async function OpsQueuePage() {
               </Button>
             </form>
           </div>
+          {/* The banner above already says nothing can be written here; this
+              says what these three would actually do, which is the part worth
+              knowing. */}
+          {IS_STATIC ? (
+            <p className="mt-3 text-xs text-[var(--color-ink-muted)]">
+              Locally these run for real: the yield engine reprices every future
+              departure, the triage sweep finds expiring documents, slow sellers
+              and distressed inventory. Both are deterministic and need no API
+              key — the finding is SQL and arithmetic.
+            </p>
+          ) : null}
         </Card>
 
         {/* ---------------------------------------------------------- Queue */}

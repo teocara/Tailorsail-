@@ -10,6 +10,7 @@ import {
 } from "@/components/ui";
 import { perRequest } from "@/lib/render-mode";
 import { IS_STATIC, liveAction } from "@/lib/static-mode";
+import { DemoNotice } from "@/components/demo-notice";
 
 export const metadata = {
   title: "List your boat",
@@ -168,6 +169,9 @@ export default async function HostPage({
                 </AiNotice>
               ) : null}
 
+              {IS_STATIC ? (
+                <DemoNotice detail="Locally this extracts a structured listing from whatever you write and names the exact documents still missing for your boat." />
+              ) : null}
               <Button type="submit" disabled={IS_STATIC}>
                 Send application
               </Button>

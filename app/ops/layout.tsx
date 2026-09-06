@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { Container } from "@/components/ui";
 import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
 const TABS = [
   { href: "/ops", label: "Queue" },
@@ -49,6 +50,27 @@ export default async function OpsLayout({
           </nav>
         </Container>
       </div>
+
+      {/*
+        These four screens carry net rates, margins, operator commercial terms
+        and draft negotiation messages, and the published build puts them on a
+        public URL with no authentication in front of them. The figures are
+        seeded fiction, but a reader has no way to know that from the numbers,
+        so the page says it.
+      */}
+      {IS_STATIC ? (
+        <Container className="pt-6">
+          <p className="rounded-[var(--radius-card)] border border-dashed border-[var(--color-line)] bg-white px-4 py-3 text-sm text-[var(--color-ink-muted)]">
+            <strong className="font-medium text-[var(--color-ink)]">
+              Demo data.
+            </strong>{" "}
+            Every figure on these operations screens comes from the seed —
+            invented operators, invented rates, invented margins. They are not
+            real commercial terms, and nothing here can be changed: this build
+            has no server behind it.
+          </p>
+        </Container>
+      ) : null}
 
       {children}
     </div>

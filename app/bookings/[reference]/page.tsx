@@ -19,6 +19,7 @@ import {
 import { perRequest } from "@/lib/render-mode";
 import { IS_STATIC, liveAction } from "@/lib/static-mode";
 import { ReadinessChecklist } from "@/components/readiness-checklist";
+import { DemoNotice } from "@/components/demo-notice";
 
 /**
  * Only the seeded bookings get a page in the static build.
@@ -131,7 +132,6 @@ export default async function BookingPage({
     })),
     berths: booking.berths,
   });
-
 
   const escalationPending = await db.opsTask.findFirst({
     where: {
@@ -269,8 +269,14 @@ export default async function BookingPage({
                   placeholder="Ask about the route, the weather, what to pack, anything…"
                   className="input"
                 />
+                {IS_STATIC ? (
+                  <DemoNotice
+                    className="mt-3"
+                    detail="The thread above is real: one reply the routing gate sent automatically, and one it escalated because the question touched refunds. Locally, a new message goes through that same gate."
+                  />
+                ) : null}
                 <div className="mt-3 flex items-center justify-between gap-4">
-                  {!isConfigured() ? (
+                  {!isConfigured() && !IS_STATIC ? (
                     <p className="text-xs text-[var(--color-ink-muted)]">
                       Without an API key every message goes straight to the
                       human queue — the escalation path, which is the one that

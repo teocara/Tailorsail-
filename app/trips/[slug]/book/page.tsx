@@ -21,6 +21,7 @@ import {
 } from "@/components/ui";
 import { perRequest } from "@/lib/render-mode";
 import { IS_STATIC, liveAction } from "@/lib/static-mode";
+import { DemoNotice } from "@/components/demo-notice";
 
 export const metadata = { title: "Request a departure" };
 
@@ -305,11 +306,18 @@ export default async function BookPage({
                 >
                   Send booking request
                 </Button>
-                <p className="mt-3 text-xs text-[var(--color-ink-muted)]">
-                  This is a demo — no payment is taken and no card details are
-                  requested. You will get a booking reference and a preparation
-                  checklist.
-                </p>
+                {IS_STATIC ? (
+                  <DemoNotice
+                    className="mt-3"
+                    detail="Locally this creates the booking, generates a reference, builds the preparation checklist from the destination programme, and opens a concierge thread."
+                  />
+                ) : (
+                  <p className="mt-3 text-xs text-[var(--color-ink-muted)]">
+                    This is a demo — no payment is taken and no card details are
+                    requested. You will get a booking reference and a
+                    preparation checklist.
+                  </p>
+                )}
               </Card>
             </div>
           </div>
