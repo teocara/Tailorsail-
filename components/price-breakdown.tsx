@@ -51,8 +51,7 @@ export function PriceBreakdown({
           </div>
         </div>
         <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-          All-in for {quote.berths}{" "}
-          {quote.berths === 1 ? "person" : "people"} —{" "}
+          All-in for {quote.berths} {quote.berths === 1 ? "person" : "people"} —{" "}
           {formatCents(quote.perPersonCents)} each. This is the complete figure,
           including what the marina collects on arrival.
         </p>

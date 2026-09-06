@@ -17,8 +17,26 @@ import {
   Section,
   formatDateRange,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
+/**
+ * Only the seeded bookings get a page in the static build.
+ *
+ * References are minted at booking time (`makeReference` in
+ * app/actions/booking.ts), so there is no build-time-known set beyond what the
+ * seed created — and with no server there can be no new bookings to name.
+ */
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const bookings = await db.bookingRequest.findMany({
+    select: { reference: true },
+  });
+  return bookings.map((b) => ({ reference: b.reference }));
+}
 
 export async function generateMetadata({
   params,
@@ -50,6 +68,7 @@ export default async function BookingPage({
 }: {
   params: Promise<{ reference: string }>;
 }) {
+  await perRequest();
   const { reference } = await params;
 
   const booking = await db.bookingRequest.findUnique({
@@ -138,8 +157,7 @@ export default async function BookingPage({
                 booking.departure.startDate,
                 booking.departure.endDate,
               )}{" "}
-              · {booking.berths}{" "}
-              {booking.berths === 1 ? "person" : "people"} ·{" "}
+              · {booking.berths} {booking.berths === 1 ? "person" : "people"} ·{" "}
               {trip.boat.name}
             </p>
           </div>
@@ -195,7 +213,7 @@ export default async function BookingPage({
                       <ul className="mt-3 space-y-2">
                         {rows.map((row) => (
                           <li key={row.id}>
-                            <form action={toggleReadiness}>
+                            <form action={liveAction(toggleReadiness)}>
                               <input type="hidden" name="id" value={row.id} />
                               <input
                                 type="hidden"
@@ -204,6 +222,7 @@ export default async function BookingPage({
                               />
                               <button
                                 type="submit"
+                                disabled={IS_STATIC}
                                 className={`flex w-full gap-3 rounded-[var(--radius-card)] border p-4 text-left transition-colors ${
                                   row.completedAt
                                     ? "border-[var(--color-line)] bg-[var(--color-surface-sunk)]"
@@ -300,7 +319,7 @@ export default async function BookingPage({
                 ) : null}
               </div>
 
-              <form action={sendConciergeMessage} className="mt-5">
+              <form action={liveAction(sendConciergeMessage)} className="mt-5">
                 <input
                   type="hidden"
                   name="reference"
@@ -327,7 +346,9 @@ export default async function BookingPage({
                   ) : (
                     <span />
                   )}
-                  <Button type="submit">Send</Button>
+                  <Button type="submit" disabled={IS_STATIC}>
+                    Send
+                  </Button>
                 </div>
               </form>
             </div>
@@ -350,7 +371,10 @@ export default async function BookingPage({
                     booking.departure.endDate,
                   )}
                 />
-                <Row label="Boat" value={`${trip.boat.name} — ${trip.boat.model}`} />
+                <Row
+                  label="Boat"
+                  value={`${trip.boat.name} — ${trip.boat.model}`}
+                />
                 <Row label="Operator" value={trip.boat.operator.name} />
                 <Row label="Party" value={`${booking.berths}`} />
               </dl>

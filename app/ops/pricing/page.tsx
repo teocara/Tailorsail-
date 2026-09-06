@@ -3,8 +3,9 @@ import { computeSellPrice, type PricingRuleInput } from "@/lib/pricing/yield";
 import { formatCents, formatPct } from "@/lib/money";
 import { runYieldNow, togglePricingRule } from "@/app/actions/ops";
 import { Button, Card, Container, Pill, Section } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Pricing rules" };
 
 const KIND_LABEL: Record<string, string> = {
@@ -42,6 +43,7 @@ function describeBand(kind: string, min: number, max: number): string {
  * switching a rule off is visible before anything is published.
  */
 export default async function PricingPage() {
+  await perRequest();
   const now = new Date();
 
   const [rules, departures] = await Promise.all([
@@ -99,7 +101,9 @@ export default async function PricingPage() {
   });
 
   const wouldChange = preview.filter(
-    (p) => p.computation.priceCents !== p.departure.sellPriceCents && !p.computation.clamped,
+    (p) =>
+      p.computation.priceCents !== p.departure.sellPriceCents &&
+      !p.computation.clamped,
   ).length;
 
   return (
@@ -136,7 +140,11 @@ export default async function PricingPage() {
                     </div>
                     <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
                       {KIND_LABEL[rule.kind]} ·{" "}
-                      {describeBand(rule.kind, rule.thresholdMin, rule.thresholdMax)}
+                      {describeBand(
+                        rule.kind,
+                        rule.thresholdMin,
+                        rule.thresholdMax,
+                      )}
                     </p>
                     {rule.note ? (
                       <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
@@ -145,10 +153,11 @@ export default async function PricingPage() {
                     ) : null}
                   </div>
 
-                  <form action={togglePricingRule}>
+                  <form action={liveAction(togglePricingRule)}>
                     <input type="hidden" name="id" value={rule.id} />
                     <Button
                       type="submit"
+                      disabled={IS_STATIC}
                       variant={rule.active ? "secondary" : "quiet"}
                       className="!px-3 !py-1 text-xs"
                     >
@@ -173,8 +182,10 @@ export default async function PricingPage() {
                   ? "Nothing would move."
                   : `${wouldChange} would move if you ran the engine.`}
               </p>
-              <form action={runYieldNow} className="mt-4">
-                <Button type="submit">Run the yield engine</Button>
+              <form action={liveAction(runYieldNow)} className="mt-4">
+                <Button type="submit" disabled={IS_STATIC}>
+                  Run the yield engine
+                </Button>
               </form>
               <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
                 The engine can only publish inside the margin band. When the
@@ -190,8 +201,12 @@ export default async function PricingPage() {
                     <tr className="text-left text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
                       <th className="px-4 py-2 font-medium">Departure</th>
                       <th className="px-3 py-2 text-right font-medium">Now</th>
-                      <th className="px-3 py-2 text-right font-medium">Would be</th>
-                      <th className="px-4 py-2 text-right font-medium">Margin</th>
+                      <th className="px-3 py-2 text-right font-medium">
+                        Would be
+                      </th>
+                      <th className="px-4 py-2 text-right font-medium">
+                        Margin
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -204,7 +219,9 @@ export default async function PricingPage() {
                           className="border-t border-[var(--color-line)] align-top"
                         >
                           <td className="px-4 py-2.5">
-                            <p className="line-clamp-1">{departure.trip.name}</p>
+                            <p className="line-clamp-1">
+                              {departure.trip.name}
+                            </p>
                             <p className="text-xs text-[var(--color-ink-muted)]">
                               {departure.startDate.toISOString().slice(0, 10)} ·{" "}
                               {departure.berthsBooked}/{departure.berthsTotal}{" "}

@@ -10,8 +10,7 @@ import {
   GradientHero,
   Section,
 } from "@/components/ui";
-
-export const dynamic = "force-dynamic";
+import { perRequest } from "@/lib/render-mode";
 
 export const metadata = {
   title: "Tailorsail Crew",
@@ -47,6 +46,7 @@ const FAQ = [
 ];
 
 export default async function CrewPage() {
+  await perRequest();
   const trips = await findTrips({ crewOnly: true, sort: "date" });
 
   return (
@@ -98,7 +98,9 @@ export default async function CrewPage() {
                 <h2 className="font-[family-name:var(--font-display)] text-xl">
                   {item.title}
                 </h2>
-                <p className="mt-2 text-[var(--color-ink-muted)]">{item.body}</p>
+                <p className="mt-2 text-[var(--color-ink-muted)]">
+                  {item.body}
+                </p>
               </div>
             ))}
           </div>
@@ -125,7 +127,10 @@ export default async function CrewPage() {
               <EmptyState title="No Crew departures with space right now">
                 <p>
                   They sell out early in the season.{" "}
-                  <Link href="/trips" className="text-[var(--accent-strong)] hover:underline">
+                  <Link
+                    href="/trips"
+                    className="text-[var(--accent-strong)] hover:underline"
+                  >
                     Browse everything else
                   </Link>
                   .

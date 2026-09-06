@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { IS_STATIC } from "@/lib/static-mode";
 
 /**
  * Session stub.
@@ -21,8 +22,11 @@ export type SessionUser = {
 };
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
-  const store = await cookies();
-  const id = store.get(COOKIE)?.value;
+  // `cookies()` is a dynamic API and cannot be called while prerendering, so
+  // the static build goes straight to the demo traveller it would have fallen
+  // back to anyway. The shape of this function is unchanged, which is the
+  // property that matters — swapping in real auth is still a change here only.
+  const id = IS_STATIC ? undefined : (await cookies()).get(COOKIE)?.value;
 
   const user = id
     ? await db.user.findUnique({ where: { id } })

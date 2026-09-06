@@ -8,8 +8,8 @@ import {
   Eyebrow,
   Section,
 } from "@/components/ui";
-
-export const dynamic = "force-dynamic";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
 export const metadata = {
   title: "List your boat",
@@ -28,7 +28,10 @@ export default async function HostPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const query = await searchParams;
+  await perRequest();
+  // Reading searchParams would make this page dynamic, which the static build
+  // cannot do. Nothing can fail there anyway — the form does not submit.
+  const query = IS_STATIC ? {} : await searchParams;
   const error = typeof query.error === "string" ? query.error : null;
 
   return (
@@ -51,7 +54,10 @@ export default async function HostPage({
       <Section>
         <Container>
           <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-start">
-            <form action={submitHostApplication} className="space-y-6">
+            <form
+              action={liveAction(submitHostApplication)}
+              className="space-y-6"
+            >
               {error ? (
                 <div className="rounded-[var(--radius-card)] border border-[#eec7c7] bg-[#fbeaea] px-4 py-3 text-sm text-[#8a2626]">
                   {error}
@@ -85,7 +91,11 @@ export default async function HostPage({
                     htmlFor="companyName"
                     hint="Leave blank if you are a private owner."
                   >
-                    <input id="companyName" name="companyName" className="input" />
+                    <input
+                      id="companyName"
+                      name="companyName"
+                      className="input"
+                    />
                   </Field>
                   <Field label="Home port or marina" htmlFor="homePort">
                     <input
@@ -158,7 +168,9 @@ export default async function HostPage({
                 </AiNotice>
               ) : null}
 
-              <Button type="submit">Send application</Button>
+              <Button type="submit" disabled={IS_STATIC}>
+                Send application
+              </Button>
             </form>
 
             {/* ------------------------------------------------ Explainer */}
@@ -216,8 +228,8 @@ export default async function HostPage({
                     commercial charter
                   </li>
                   <li>
-                    Safety equipment declaration — liferaft service date, flares,
-                    lifejacket count
+                    Safety equipment declaration — liferaft service date,
+                    flares, lifejacket count
                   </li>
                 </ul>
                 <p className="mt-4 text-xs text-[var(--color-ink-muted)]">

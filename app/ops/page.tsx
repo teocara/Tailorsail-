@@ -9,29 +9,24 @@ import {
   runTriageNow,
   runYieldNow,
 } from "@/app/actions/ops";
-import {
-  Button,
-  Card,
-  Container,
-  Pill,
-  Section,
-  Stat,
-} from "@/components/ui";
+import { Button, Card, Container, Pill, Section, Stat } from "@/components/ui";
 import type { OpsTaskKind } from "@prisma/client";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Ops queue" };
 
-const TONE: Record<OpsTaskKind, "critical" | "caution" | "accent" | "neutral"> = {
-  EXPIRING_DOCUMENT: "critical",
-  ESCALATED_MESSAGE: "caution",
-  BOOKING_EXCEPTION: "caution",
-  OPERATOR_APPROVAL: "accent",
-  RATE_OPPORTUNITY: "accent",
-  PRICE_OUT_OF_BAND: "neutral",
-  LOW_OCCUPANCY: "neutral",
-  CONTENT_REVIEW: "neutral",
-};
+const TONE: Record<OpsTaskKind, "critical" | "caution" | "accent" | "neutral"> =
+  {
+    EXPIRING_DOCUMENT: "critical",
+    ESCALATED_MESSAGE: "caution",
+    BOOKING_EXCEPTION: "caution",
+    OPERATOR_APPROVAL: "accent",
+    RATE_OPPORTUNITY: "accent",
+    PRICE_OUT_OF_BAND: "neutral",
+    LOW_OCCUPANCY: "neutral",
+    CONTENT_REVIEW: "neutral",
+  };
 
 /**
  * The queue.
@@ -42,6 +37,7 @@ const TONE: Record<OpsTaskKind, "critical" | "caution" | "accent" | "neutral"> =
  * two people: they work one list rather than watching six inboxes.
  */
 export default async function OpsQueuePage() {
+  await perRequest();
   const [tasks, health, recentlyDone] = await Promise.all([
     openTasks(),
     loadInventoryHealth(),
@@ -53,7 +49,9 @@ export default async function OpsQueuePage() {
   ]);
 
   // Subject lookups so each row can link to the thing it is about.
-  const bookingIds = tasks.filter((t) => t.subjectType === "booking").map((t) => t.subjectId);
+  const bookingIds = tasks
+    .filter((t) => t.subjectType === "booking")
+    .map((t) => t.subjectId);
   const applicationIds = tasks
     .filter((t) => t.subjectType === "hostApplication")
     .map((t) => t.subjectId);
@@ -110,18 +108,18 @@ export default async function OpsQueuePage() {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--color-line)] pt-5">
-            <form action={runYieldNow}>
-              <Button type="submit" variant="secondary">
+            <form action={liveAction(runYieldNow)}>
+              <Button type="submit" disabled={IS_STATIC} variant="secondary">
                 Run yield engine
               </Button>
             </form>
-            <form action={runTriageNow}>
-              <Button type="submit" variant="secondary">
+            <form action={liveAction(runTriageNow)}>
+              <Button type="submit" disabled={IS_STATIC} variant="secondary">
                 Run triage sweep
               </Button>
             </form>
-            <form action={markContentReviewed}>
-              <Button type="submit" variant="quiet">
+            <form action={liveAction(markContentReviewed)}>
+              <Button type="submit" disabled={IS_STATIC} variant="quiet">
                 Mark generated content reviewed
               </Button>
             </form>
@@ -199,29 +197,39 @@ export default async function OpsQueuePage() {
 
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-line)] pt-4">
                     {isApplication ? (
-                      <form action={approveHostApplication}>
+                      <form action={liveAction(approveHostApplication)}>
                         <input
                           type="hidden"
                           name="applicationId"
                           value={task.subjectId}
                         />
                         <input type="hidden" name="taskId" value={task.id} />
-                        <Button type="submit">Approve &amp; create operator</Button>
+                        <Button type="submit" disabled={IS_STATIC}>
+                          Approve &amp; create operator
+                        </Button>
                       </form>
                     ) : null}
 
-                    <form action={resolveOpsTask}>
+                    <form action={liveAction(resolveOpsTask)}>
                       <input type="hidden" name="id" value={task.id} />
                       <input type="hidden" name="action" value="done" />
-                      <Button type="submit" variant="secondary">
+                      <Button
+                        type="submit"
+                        disabled={IS_STATIC}
+                        variant="secondary"
+                      >
                         Mark done
                       </Button>
                     </form>
 
-                    <form action={resolveOpsTask}>
+                    <form action={liveAction(resolveOpsTask)}>
                       <input type="hidden" name="id" value={task.id} />
                       <input type="hidden" name="action" value="dismiss" />
-                      <Button type="submit" variant="quiet">
+                      <Button
+                        type="submit"
+                        disabled={IS_STATIC}
+                        variant="quiet"
+                      >
                         Dismiss
                       </Button>
                     </form>

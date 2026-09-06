@@ -7,7 +7,10 @@ import type { PriceComponentInput } from "@/lib/pricing/types";
 import { formatCents } from "@/lib/money";
 import { createBooking } from "@/app/actions/booking";
 import { PriceBreakdown } from "@/components/price-breakdown";
-import { ADDON_PUBLIC_SELECT, DEPARTURE_PUBLIC_SELECT } from "@/lib/public-select";
+import {
+  ADDON_PUBLIC_SELECT,
+  DEPARTURE_PUBLIC_SELECT,
+} from "@/lib/public-select";
 import {
   Button,
   Card,
@@ -16,9 +19,20 @@ import {
   Section,
   formatDateRange,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Request a departure" };
+
+/** Same set as the trip pages — every trip's booking form is reachable. */
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const trips = await db.trip.findMany({ select: { slug: true } });
+  return trips.map((t) => ({ slug: t.slug }));
+}
 
 export default async function BookPage({
   params,
@@ -27,8 +41,9 @@ export default async function BookPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await perRequest();
   const { slug } = await params;
-  const query = await searchParams;
+  const query = IS_STATIC ? {} : await searchParams;
 
   const trip = await db.trip.findUnique({
     where: { slug },
@@ -134,7 +149,7 @@ export default async function BookPage({
           {trip.boat.name}
         </p>
 
-        <form action={createBooking} className="mt-8">
+        <form action={liveAction(createBooking)} className="mt-8">
           <input type="hidden" name="departureId" value={departure.id} />
 
           <div className="grid gap-8 lg:grid-cols-[1.3fr_1fr] lg:items-start">
@@ -262,7 +277,12 @@ export default async function BookPage({
                     htmlFor="notes"
                     hint="Dietary requirements, seasickness, someone joining a day late, a birthday. All useful."
                   >
-                    <textarea id="notes" name="notes" rows={3} className="input" />
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      rows={3}
+                      className="input"
+                    />
                   </Field>
                 </div>
               </Card>
@@ -278,7 +298,11 @@ export default async function BookPage({
                   {berths === 1 ? "person" : "people"} without extras. Anything
                   you tick is added to your confirmation.
                 </p>
-                <Button type="submit" className="mt-4 w-full">
+                <Button
+                  type="submit"
+                  disabled={IS_STATIC}
+                  className="mt-4 w-full"
+                >
                   Send booking request
                 </Button>
                 <p className="mt-3 text-xs text-[var(--color-ink-muted)]">

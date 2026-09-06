@@ -74,7 +74,9 @@ export function TripCard({ trip }: { trip: TripListItem }) {
                   : ""}
               </p>
               <p className="mt-0.5">
-                <span className="text-xs text-[var(--color-ink-muted)]">from </span>
+                <span className="text-xs text-[var(--color-ink-muted)]">
+                  from{" "}
+                </span>
                 <span className="font-[family-name:var(--font-display)] text-xl">
                   {formatCents(lead.perPersonFromCents)}
                 </span>

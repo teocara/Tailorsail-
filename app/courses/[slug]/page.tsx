@@ -13,8 +13,17 @@ import {
   Pill,
   Section,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const courses = await db.course.findMany({ select: { slug: true } });
+  return courses.map((c) => ({ slug: c.slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -40,6 +49,7 @@ export default async function CoursePage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  await perRequest();
   const { slug } = await params;
 
   const course = await db.course.findUnique({
@@ -90,7 +100,10 @@ export default async function CoursePage({
               </h2>
               <ul className="mt-4 space-y-2.5">
                 {syllabus.map((item) => (
-                  <li key={item} className="flex gap-3 text-[var(--color-ink-muted)]">
+                  <li
+                    key={item}
+                    className="flex gap-3 text-[var(--color-ink-muted)]"
+                  >
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent-strong)]" />
                     <span>{item}</span>
                   </li>
@@ -100,7 +113,9 @@ export default async function CoursePage({
 
             <Card className="p-6 lg:sticky lg:top-6">
               <p className="font-[family-name:var(--font-display)] text-3xl">
-                {course.priceCents === 0 ? "Free" : formatCents(course.priceCents)}
+                {course.priceCents === 0
+                  ? "Free"
+                  : formatCents(course.priceCents)}
               </p>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
                 {FORMAT_LABEL[course.format]}

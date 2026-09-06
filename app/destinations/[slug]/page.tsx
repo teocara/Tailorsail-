@@ -13,8 +13,19 @@ import {
   SKILL_LABEL,
   Section,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const destinations = await db.destination.findMany({
+    select: { slug: true },
+  });
+  return destinations.map((d) => ({ slug: d.slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -38,6 +49,7 @@ export default async function DestinationPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  await perRequest();
   const { slug } = await params;
 
   const destination = await db.destination.findUnique({

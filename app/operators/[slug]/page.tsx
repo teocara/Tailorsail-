@@ -13,8 +13,22 @@ import {
   Pill,
   Section,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
+/**
+ * All operators, including the one mid-insurance-expiry. Its trips are gone
+ * from search, but its profile is where the badge downgrade is legible — which
+ * is the point of having it in the seed.
+ */
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const operators = await db.operator.findMany({ select: { slug: true } });
+  return operators.map((o) => ({ slug: o.slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -31,6 +45,7 @@ export default async function OperatorPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  await perRequest();
   const { slug } = await params;
 
   const operator = await db.operator.findUnique({
@@ -106,7 +121,8 @@ export default async function OperatorPage({
             </Pill>
             {operator.reviewCount > 0 ? (
               <Pill>
-                {operator.ratingAvg.toFixed(1)} from {operator.reviewCount} trips
+                {operator.ratingAvg.toFixed(1)} from {operator.reviewCount}{" "}
+                trips
               </Pill>
             ) : null}
           </div>
@@ -207,7 +223,10 @@ export default async function OperatorPage({
                 {operator.status !== "VERIFIED"
                   ? "Their verification is still in progress, so their boats are not yet bookable through us."
                   : "Every departure is either sold out or outside our booking window."}{" "}
-                <Link href="/trips" className="text-[var(--accent-strong)] hover:underline">
+                <Link
+                  href="/trips"
+                  className="text-[var(--accent-strong)] hover:underline"
+                >
                   Browse everything else
                 </Link>
                 .

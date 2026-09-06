@@ -8,11 +8,12 @@ import {
   SKILL_LABEL,
   Section,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Destinations" };
 
 export default async function DestinationsPage() {
+  await perRequest();
   const regions = await db.region.findMany({
     include: {
       destinations: {

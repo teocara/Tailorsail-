@@ -4,13 +4,18 @@ import { filtersFromSearchParams, findTrips } from "@/lib/trips";
 import { TripGrid } from "@/components/trip-card";
 import { SearchBox } from "@/components/search-box";
 import { Container, EmptyState, Eyebrow, Pill, Section } from "@/components/ui";
-
-export const dynamic = "force-dynamic";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
 export const metadata = { title: "Trips" };
 
 const MONTHS = [
-  [5, "May"], [6, "Jun"], [7, "Jul"], [8, "Aug"], [9, "Sep"], [10, "Oct"],
+  [5, "May"],
+  [6, "Jun"],
+  [7, "Jul"],
+  [8, "Aug"],
+  [9, "Sep"],
+  [10, "Oct"],
 ] as const;
 
 const SKILLS = [
@@ -28,11 +33,7 @@ const FORMATS = [
 type SearchParams = Record<string, string | string[] | undefined>;
 
 /** Build a URL with one filter toggled, preserving the rest. */
-function toggleHref(
-  params: SearchParams,
-  key: string,
-  value: string,
-): string {
+function toggleHref(params: SearchParams, key: string, value: string): string {
   const next = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined) continue;
@@ -55,7 +56,11 @@ export default async function TripsPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
+  await perRequest();
+  // The static build ships the unfiltered catalogue and applies facets in the
+  // browser (components/trip-finder.tsx), because reading searchParams here
+  // would make the page dynamic.
+  const params = IS_STATIC ? {} : await searchParams;
   const filters = filtersFromSearchParams(params);
 
   const query = typeof params.q === "string" ? params.q : "";

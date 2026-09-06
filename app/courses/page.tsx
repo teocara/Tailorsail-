@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import { formatCents } from "@/lib/money";
 import { Card, Container, Eyebrow, Pill, Section } from "@/components/ui";
 import { COURSE_LIST_SELECT } from "@/lib/public-select";
+import { perRequest } from "@/lib/render-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Courses" };
 
 const LEVEL_LABEL: Record<string, string> = {
@@ -23,6 +23,7 @@ const FORMAT_LABEL: Record<string, string> = {
 const ORDER = ["FIRST_TIMER", "THEORY", "COMPETENT_CREW", "SKIPPER"] as const;
 
 export default async function CoursesPage() {
+  await perRequest();
   const courses = await db.course.findMany({
     select: COURSE_LIST_SELECT,
     orderBy: { durationHours: "asc" },
@@ -63,7 +64,9 @@ export default async function CoursesPage() {
                   className="group flex flex-col rounded-[var(--radius-card)] border border-[var(--color-line)] p-6 transition-colors hover:border-[var(--accent-strong)]"
                 >
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Pill tone={course.priceCents === 0 ? "positive" : "neutral"}>
+                    <Pill
+                      tone={course.priceCents === 0 ? "positive" : "neutral"}
+                    >
                       {course.priceCents === 0
                         ? "Free"
                         : formatCents(course.priceCents)}

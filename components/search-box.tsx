@@ -1,4 +1,5 @@
 import { searchTrips } from "@/app/actions/search";
+import { IS_STATIC, liveAction } from "@/lib/static-mode";
 
 const EXAMPLES = [
   "Croatia in August, six friends, none of us have sailed",
@@ -21,7 +22,10 @@ export function SearchBox({
 }) {
   return (
     <div>
-      <form action={searchTrips} className="flex flex-col gap-2 sm:flex-row">
+      <form
+        action={liveAction(searchTrips)}
+        className="flex flex-col gap-2 sm:flex-row"
+      >
         <label htmlFor="q" className="sr-only">
           Describe the sailing holiday you want
         </label>
@@ -34,6 +38,7 @@ export function SearchBox({
         />
         <button
           type="submit"
+          disabled={IS_STATIC}
           className="rounded-full bg-[var(--accent-strong)] px-6 py-3 text-sm font-medium text-[var(--accent-contrast)] transition-opacity hover:opacity-90"
         >
           Find trips
@@ -43,10 +48,11 @@ export function SearchBox({
       {!compact ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {EXAMPLES.map((example) => (
-            <form key={example} action={searchTrips}>
+            <form key={example} action={liveAction(searchTrips)}>
               <input type="hidden" name="q" value={example} />
               <button
                 type="submit"
+                disabled={IS_STATIC}
                 className="rounded-full border border-[var(--color-line)] bg-white/70 px-3 py-1 text-xs text-[var(--color-ink-muted)] transition-colors hover:border-[var(--accent-strong)] hover:text-navy-900"
               >
                 {example}

@@ -20,8 +20,24 @@ import {
   Section,
   formatDateRange,
 } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
+/**
+ * Every sellable trip gets a prerendered page in the static build.
+ *
+ * Deliberately not gated on verification: an operator whose insurance lapses
+ * drops out of *search*, but the trip page itself should still resolve rather
+ * than 404, which is what `findTrips` already does for the server build.
+ */
+export async function generateStaticParams() {
+  // Export only. The server build returns nothing here so every path renders
+  // on demand — otherwise a yield run would reprice a departure and this page
+  // would keep serving the price from whenever it was last built.
+  if (!IS_STATIC) return [];
+  const trips = await db.trip.findMany({ select: { slug: true } });
+  return trips.map((t) => ({ slug: t.slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -40,8 +56,11 @@ export default async function TripPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await perRequest();
   const { slug } = await params;
-  const query = await searchParams;
+  // Static build reads departure and party size in the browser instead — see
+  // components/price-panel.tsx, which switches between quotes precomputed here.
+  const query = IS_STATIC ? {} : await searchParams;
   const now = new Date();
 
   const trip = await db.trip.findUnique({
@@ -165,15 +184,17 @@ export default async function TripPage({
   // The selected departure drives the whole page's pricing.
   const requested =
     typeof query.departure === "string" ? query.departure : undefined;
-  const departure =
-    available.find((d) => d.id === requested) ?? available[0];
+  const departure = available.find((d) => d.id === requested) ?? available[0];
 
   const requestedBerths = Number(query.berths);
   const maxBerths = departure.berthsTotal - departure.berthsBooked;
   const berths =
     Number.isFinite(requestedBerths) && requestedBerths >= 1
       ? Math.min(requestedBerths, maxBerths)
-      : Math.min(trip.format === "WHOLE_BOAT" ? departure.berthsTotal : 2, maxBerths);
+      : Math.min(
+          trip.format === "WHOLE_BOAT" ? departure.berthsTotal : 2,
+          maxBerths,
+        );
 
   const components: PriceComponentInput[] = trip.priceComponents.map((c) => ({
     label: c.label,
@@ -200,11 +221,18 @@ export default async function TripPage({
   );
 
   const amenities: string[] = JSON.parse(trip.boat.amenities);
-  const totalMiles = trip.itinerary.reduce((acc, d) => acc + d.nauticalMiles, 0);
+  const totalMiles = trip.itinerary.reduce(
+    (acc, d) => acc + d.nauticalMiles,
+    0,
+  );
 
   return (
     <div data-brand={trip.isCrewTrip ? "crew" : undefined}>
-      <GradientHero from={trip.heroFrom} to={trip.heroTo} className="text-white">
+      <GradientHero
+        from={trip.heroFrom}
+        to={trip.heroTo}
+        className="text-white"
+      >
         <Container className="relative py-14 sm:py-20">
           <Link
             href={`/destinations/${trip.destination.slug}`}
@@ -283,8 +311,8 @@ export default async function TripPage({
                   Everything you will pay, before you book
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm text-[var(--color-ink-muted)]">
-                  Priced for {berths} {berths === 1 ? "person" : "people"} on the{" "}
-                  {formatDateRange(departure.startDate, departure.endDate)}{" "}
+                  Priced for {berths} {berths === 1 ? "person" : "people"} on
+                  the {formatDateRange(departure.startDate, departure.endDate)}{" "}
                   departure. Change the party size or the date on the right and
                   this updates.
                 </p>
@@ -308,7 +336,10 @@ export default async function TripPage({
                     ["Heads", String(trip.boat.heads)],
                     ["Built", String(trip.boat.builtYear)],
                     ...(trip.boat.refitYear
-                      ? ([["Refit", String(trip.boat.refitYear)]] as [string, string][])
+                      ? ([["Refit", String(trip.boat.refitYear)]] as [
+                          string,
+                          string,
+                        ][])
                       : []),
                   ].map(([label, value]) => (
                     <div key={label}>

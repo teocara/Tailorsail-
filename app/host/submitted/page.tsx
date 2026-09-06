@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { Card, Container, Eyebrow, Pill, Section } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
+import { IS_STATIC } from "@/lib/static-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Application received" };
 
 /**
@@ -18,11 +19,18 @@ export default async function SubmittedPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const query = await searchParams;
+  await perRequest();
+  // Nothing can submit in the static build, so there is no id to arrive with.
+  // Rather than export a page that is permanently a 404, show the seeded
+  // application — this screen exists to demonstrate the extraction, and it
+  // demonstrates it just as well with a seeded one.
+  const query = IS_STATIC ? {} : await searchParams;
   const id = typeof query.id === "string" ? query.id : undefined;
-  if (!id) notFound();
+  if (!id && !IS_STATIC) notFound();
 
-  const application = await db.hostApplication.findUnique({ where: { id } });
+  const application = id
+    ? await db.hostApplication.findUnique({ where: { id } })
+    : await db.hostApplication.findFirst({ orderBy: { createdAt: "desc" } });
   if (!application) notFound();
 
   const gaps: string[] = JSON.parse(application.gapsJson);

@@ -12,8 +12,7 @@ import {
   GradientHero,
   Section,
 } from "@/components/ui";
-
-export const dynamic = "force-dynamic";
+import { perRequest } from "@/lib/render-mode";
 
 const PILLARS = [
   {
@@ -34,6 +33,7 @@ const PILLARS = [
 ];
 
 export default async function HomePage() {
+  await perRequest();
   const [destinations, featured, crew, courses] = await Promise.all([
     db.destination.findMany({
       include: { region: true, _count: { select: { trips: true } } },

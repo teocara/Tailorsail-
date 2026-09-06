@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { Container } from "@/components/ui";
-
-export const dynamic = "force-dynamic";
+import { perRequest } from "@/lib/render-mode";
 
 const TABS = [
   { href: "/ops", label: "Queue" },
@@ -16,6 +15,7 @@ export default async function OpsLayout({
 }: {
   children: React.ReactNode;
 }) {
+  await perRequest();
   const open = await db.opsTask.count({ where: { status: "OPEN" } });
 
   return (

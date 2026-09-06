@@ -7,8 +7,8 @@ import {
 } from "@/lib/pricing/margin";
 import { formatCents, formatPct } from "@/lib/money";
 import { Card, Container, Section, Stat } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "Margin" };
 
 const DIMENSIONS: { key: MarginDimension; title: string; blurb: string }[] = [
@@ -46,6 +46,7 @@ const DIMENSIONS: { key: MarginDimension; title: string; blurb: string }[] = [
  * retroactively rewrite what we think we earned.
  */
 export default async function MarginPage() {
+  await perRequest();
   const [bookings, health] = await Promise.all([
     loadBookingSnapshots(),
     loadInventoryHealth(),
@@ -64,7 +65,10 @@ export default async function MarginPage() {
               value={formatCents(overall.revenueCents)}
               hint={`${overall.bookings} bookings`}
             />
-            <Stat label="Cost of sales" value={formatCents(overall.costCents)} />
+            <Stat
+              label="Cost of sales"
+              value={formatCents(overall.costCents)}
+            />
             <Stat
               label="Gross margin"
               value={formatCents(overall.marginCents)}
@@ -82,7 +86,10 @@ export default async function MarginPage() {
           </div>
 
           <div className="mt-6 grid gap-6 border-t border-[var(--color-line)] pt-5 sm:grid-cols-3">
-            <Stat label="Average order value" value={formatCents(overall.aovCents)} />
+            <Stat
+              label="Average order value"
+              value={formatCents(overall.aovCents)}
+            />
             <Stat
               label="Berths sold, future"
               value={String(health.soldBerths)}
@@ -98,8 +105,8 @@ export default async function MarginPage() {
 
         {bookings.length === 0 ? (
           <Card className="mt-8 p-8 text-sm text-[var(--color-ink-muted)]">
-            No bookings yet, so there is nothing to break down. Take a booking on
-            the public site and this fills in.
+            No bookings yet, so there is nothing to break down. Take a booking
+            on the public site and this fills in.
           </Card>
         ) : (
           <div className="mt-8 grid gap-6 lg:grid-cols-2">

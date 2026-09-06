@@ -11,7 +11,9 @@ export function Container({
   className?: string;
 }) {
   return (
-    <div className={`mx-auto w-full max-w-6xl px-5 ${className}`}>{children}</div>
+    <div className={`mx-auto w-full max-w-6xl px-5 ${className}`}>
+      {children}
+    </div>
   );
 }
 
@@ -44,8 +46,10 @@ const TONE_CLASS: Record<string, string> = {
   positive: "bg-[#e8f3ec] text-[#1f5c3d] border-[#c3e0cf]",
   caution: "bg-[#fdf1de] text-[#7a5013] border-[#f0d9ae]",
   critical: "bg-[#fbeaea] text-[#8a2626] border-[#eec7c7]",
-  neutral: "bg-[var(--color-surface-sunk)] text-[var(--color-ink-muted)] border-[var(--color-line)]",
-  accent: "bg-[var(--accent-soft)] text-[var(--accent-strong)] border-transparent",
+  neutral:
+    "bg-[var(--color-surface-sunk)] text-[var(--color-ink-muted)] border-[var(--color-line)]",
+  accent:
+    "bg-[var(--accent-soft)] text-[var(--accent-strong)] border-transparent",
 };
 
 export function Pill({
@@ -176,7 +180,9 @@ export function EmptyState({
   return (
     <Card className="p-10 text-center">
       <p className="font-[family-name:var(--font-display)] text-xl">{title}</p>
-      <div className="mt-2 text-sm text-[var(--color-ink-muted)]">{children}</div>
+      <div className="mt-2 text-sm text-[var(--color-ink-muted)]">
+        {children}
+      </div>
     </Card>
   );
 }
@@ -226,7 +232,10 @@ export function formatDateRange(start: Date, end: Date): string {
       ...(withMonth ? { month: "short" } : {}),
       timeZone: "UTC",
     });
-  const year = end.toLocaleDateString("en-GB", { year: "numeric", timeZone: "UTC" });
+  const year = end.toLocaleDateString("en-GB", {
+    year: "numeric",
+    timeZone: "UTC",
+  });
   return `${d(start, !sameMonth)} – ${d(end, true)} ${year}`;
 }
 

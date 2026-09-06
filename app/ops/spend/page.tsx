@@ -3,8 +3,8 @@ import { isConfigured, MODEL } from "@/lib/ai/client";
 import { loadSpendSummary } from "@/lib/ops-queries";
 import { formatPct } from "@/lib/money";
 import { AiNotice, Card, Container, Section, Stat } from "@/components/ui";
+import { perRequest } from "@/lib/render-mode";
 
-export const dynamic = "force-dynamic";
 export const metadata = { title: "AI spend" };
 
 const FEATURE_LABEL: Record<string, string> = {
@@ -27,6 +27,7 @@ const FEATURE_LABEL: Record<string, string> = {
  * made the supposedly-stable prefix not stable.
  */
 export default async function SpendPage() {
+  await perRequest();
   const [summary, bookings] = await Promise.all([
     loadSpendSummary(),
     db.bookingRequest.count(),
@@ -73,9 +74,7 @@ export default async function SpendPage() {
             />
             <Stat
               label="Calls per booking"
-              value={
-                bookings > 0 ? (summary.calls / bookings).toFixed(1) : "—"
-              }
+              value={bookings > 0 ? (summary.calls / bookings).toFixed(1) : "—"}
               hint={`${bookings} bookings`}
             />
           </div>
@@ -98,7 +97,9 @@ export default async function SpendPage() {
                     <th className="px-3 py-2 text-right font-medium">Cached</th>
                     <th className="px-3 py-2 text-right font-medium">Out</th>
                     <th className="px-3 py-2 text-right font-medium">Fails</th>
-                    <th className="px-5 py-2 text-right font-medium">Latency</th>
+                    <th className="px-5 py-2 text-right font-medium">
+                      Latency
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -150,8 +151,8 @@ export default async function SpendPage() {
                 Content is generated once, not per view.
               </strong>{" "}
               Itineraries and readiness programmes are properties of the trip,
-              so they are generated offline, reviewed by a person, and committed.
-              A million page views cost nothing.
+              so they are generated offline, reviewed by a person, and
+              committed. A million page views cost nothing.
             </li>
             <li>
               <strong className="font-medium text-[var(--color-ink)]">
