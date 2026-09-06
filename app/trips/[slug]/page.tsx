@@ -2,13 +2,17 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { buildCustomerQuote, referencePriceCents } from "@/lib/pricing/quote";
+import { quoteKey, type TripPricing } from "@/lib/trip-pricing";
+import type { CustomerQuote } from "@/lib/pricing/types";
+import {
+  LivePriceBreakdown,
+  PricePanel,
+  TripPricingProvider,
+} from "@/components/trip-pricing";
 import type { PriceComponentInput } from "@/lib/pricing/types";
-import { formatCents } from "@/lib/money";
-import { PriceBreakdown } from "@/components/price-breakdown";
 import { OperatorCard } from "@/components/verification";
 import {
   BOAT_LABEL,
-  ButtonLink,
   Card,
   Container,
   Eyebrow,
@@ -18,7 +22,6 @@ import {
   SKILL_LABEL,
   SKIPPER_LABEL,
   Section,
-  formatDateRange,
 } from "@/components/ui";
 import { perRequest } from "@/lib/render-mode";
 import { IS_STATIC } from "@/lib/static-mode";
@@ -59,7 +62,7 @@ export default async function TripPage({
   await perRequest();
   const { slug } = await params;
   // Static build reads departure and party size in the browser instead — see
-  // components/price-panel.tsx, which switches between quotes precomputed here.
+  // components/trip-pricing.tsx, which switches between the quotes built below.
   const query = IS_STATIC ? {} : await searchParams;
   const now = new Date();
 
@@ -207,18 +210,47 @@ export default async function TripPage({
     order: c.order,
   }));
 
-  const quote = buildCustomerQuote({
-    sellPriceCents: departure.sellPriceCents,
-    components,
-    berths,
-  });
+  /** Which party sizes the chips offer for a given departure. */
+  const partySizesFor = (d: (typeof available)[number]) => {
+    const free = d.berthsTotal - d.berthsBooked;
+    return Array.from({ length: free }, (_, i) => i + 1).filter(
+      (n) => n >= 2 || free === 1,
+    );
+  };
 
-  // Only ever non-null when the price history genuinely supports the claim.
-  const reference = referencePriceCents(
-    departure.priceHistory,
-    departure.sellPriceCents,
-    now,
-  );
+  // Every price this page can show, precomputed. The browser switches between
+  // them; it never works one out. See lib/trip-pricing.ts.
+  const shown = available.slice(0, 12);
+  const quotes: Record<string, CustomerQuote> = {};
+  for (const d of shown) {
+    for (const n of partySizesFor(d)) {
+      quotes[quoteKey(d.id, n)] = buildCustomerQuote({
+        sellPriceCents: d.sellPriceCents,
+        components,
+        berths: n,
+      });
+    }
+  }
+
+  const pricing: TripPricing = {
+    slug: trip.slug,
+    departures: shown.map((d) => ({
+      id: d.id,
+      startDate: d.startDate.toISOString(),
+      endDate: d.endDate.toISOString(),
+      berthsFree: d.berthsTotal - d.berthsBooked,
+      partySizes: partySizesFor(d),
+      // Only ever non-null when the price history genuinely supports the claim.
+      referenceCents: referencePriceCents(
+        d.priceHistory,
+        d.sellPriceCents,
+        now,
+      ),
+    })),
+    quotes,
+    defaultDepartureId: departure.id,
+    defaultBerths: berths,
+  };
 
   const amenities: string[] = JSON.parse(trip.boat.amenities);
   const totalMiles = trip.itinerary.reduce(
@@ -264,228 +296,157 @@ export default async function TripPage({
 
       <Section className="!pt-10">
         <Container>
-          <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr] lg:items-start">
-            {/* --------------------------------------------- Left column */}
-            <div className="min-w-0 space-y-12">
-              {/* Itinerary */}
-              <div>
-                <Eyebrow>Day by day</Eyebrow>
-                <h2 className="mt-2 text-2xl">
-                  {trip.startPort} to {trip.endPort}
-                </h2>
-                <ol className="mt-6 space-y-5">
-                  {trip.itinerary.map((day) => (
-                    <li
-                      key={day.id}
-                      className="grid gap-3 border-b border-[var(--color-line)] pb-5 last:border-0 sm:grid-cols-[4rem_1fr]"
+          {/*
+            The breakdown and the panel sit in opposite columns, so the
+            selection lives in a provider around the whole grid. Everything
+            between them is still server-rendered and passes straight through.
+          */}
+          <TripPricingProvider pricing={pricing}>
+            <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr] lg:items-start">
+              {/* --------------------------------------------- Left column */}
+              <div className="min-w-0 space-y-12">
+                {/* Itinerary */}
+                <div>
+                  <Eyebrow>Day by day</Eyebrow>
+                  <h2 className="mt-2 text-2xl">
+                    {trip.startPort} to {trip.endPort}
+                  </h2>
+                  <ol className="mt-6 space-y-5">
+                    {trip.itinerary.map((day) => (
+                      <li
+                        key={day.id}
+                        className="grid gap-3 border-b border-[var(--color-line)] pb-5 last:border-0 sm:grid-cols-[4rem_1fr]"
+                      >
+                        <div>
+                          <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--accent-strong)]">
+                            {String(day.dayNumber).padStart(2, "0")}
+                          </p>
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {day.nauticalMiles} nm
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-medium">{day.title}</p>
+                          <p className="text-xs text-[var(--color-ink-muted)]">
+                            {day.fromPort} → {day.toPort}
+                          </p>
+                          <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
+                            {day.description}
+                          </p>
+                          <p className="mt-2 text-sm text-[var(--accent-strong)]">
+                            {day.highlight}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                {/* Price breakdown */}
+                <div>
+                  <Eyebrow>Transparent pricing</Eyebrow>
+                  <h2 className="mt-2 text-2xl">
+                    Everything you will pay, before you book
+                  </h2>
+                  <LivePriceBreakdown />
+                </div>
+
+                {/* The boat */}
+                <div>
+                  <Eyebrow>The boat</Eyebrow>
+                  <h2 className="mt-2 text-2xl">
+                    {trip.boat.name} — {trip.boat.model}
+                  </h2>
+                  <dl className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {[
+                      ["Type", BOAT_LABEL[trip.boat.type]],
+                      ["Length", `${trip.boat.lengthM} m`],
+                      ["Cabins", String(trip.boat.cabins)],
+                      ["Berths", String(trip.boat.berths)],
+                      ["Heads", String(trip.boat.heads)],
+                      ["Built", String(trip.boat.builtYear)],
+                      ...(trip.boat.refitYear
+                        ? ([["Refit", String(trip.boat.refitYear)]] as [
+                            string,
+                            string,
+                          ][])
+                        : []),
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                          {label}
+                        </dt>
+                        <dd className="mt-0.5 font-medium">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="mt-5 flex flex-wrap gap-1.5">
+                    {amenities.map((a) => (
+                      <Pill key={a}>{a}</Pill>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Readiness preview */}
+                <div>
+                  <Eyebrow>Before you go</Eyebrow>
+                  <h2 className="mt-2 text-2xl">
+                    Your {trip.destination.name} preparation programme
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm text-[var(--color-ink-muted)]">
+                    Delivered in stages from booking through to the first
+                    morning aboard. Here are the first few — the full programme
+                    is on the{" "}
+                    <Link
+                      href={`/destinations/${trip.destination.slug}`}
+                      className="text-[var(--accent-strong)] hover:underline"
                     >
-                      <div>
-                        <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--accent-strong)]">
-                          {String(day.dayNumber).padStart(2, "0")}
+                      destination page
+                    </Link>
+                    , published in full.
+                  </p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    {trip.destination.readinessTasks.map((task) => (
+                      <Card key={task.id} className="p-5">
+                        <p className="font-medium">{task.title}</p>
+                        <p className="mt-1.5 text-sm text-[var(--color-ink-muted)]">
+                          {task.body}
                         </p>
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {day.nauticalMiles} nm
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-medium">{day.title}</p>
-                        <p className="text-xs text-[var(--color-ink-muted)]">
-                          {day.fromPort} → {day.toPort}
-                        </p>
-                        <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
-                          {day.description}
-                        </p>
-                        <p className="mt-2 text-sm text-[var(--accent-strong)]">
-                          {day.highlight}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-
-              {/* Price breakdown */}
-              <div>
-                <Eyebrow>Transparent pricing</Eyebrow>
-                <h2 className="mt-2 text-2xl">
-                  Everything you will pay, before you book
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm text-[var(--color-ink-muted)]">
-                  Priced for {berths} {berths === 1 ? "person" : "people"} on
-                  the {formatDateRange(departure.startDate, departure.endDate)}{" "}
-                  departure. Change the party size or the date on the right and
-                  this updates.
-                </p>
-                <div className="mt-5">
-                  <PriceBreakdown quote={quote} referenceCents={reference} />
+                      </Card>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* The boat */}
-              <div>
-                <Eyebrow>The boat</Eyebrow>
-                <h2 className="mt-2 text-2xl">
-                  {trip.boat.name} — {trip.boat.model}
-                </h2>
-                <dl className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {[
-                    ["Type", BOAT_LABEL[trip.boat.type]],
-                    ["Length", `${trip.boat.lengthM} m`],
-                    ["Cabins", String(trip.boat.cabins)],
-                    ["Berths", String(trip.boat.berths)],
-                    ["Heads", String(trip.boat.heads)],
-                    ["Built", String(trip.boat.builtYear)],
-                    ...(trip.boat.refitYear
-                      ? ([["Refit", String(trip.boat.refitYear)]] as [
-                          string,
-                          string,
-                        ][])
-                      : []),
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                        {label}
-                      </dt>
-                      <dd className="mt-0.5 font-medium">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <div className="mt-5 flex flex-wrap gap-1.5">
-                  {amenities.map((a) => (
-                    <Pill key={a}>{a}</Pill>
-                  ))}
-                </div>
-              </div>
+              {/* -------------------------------------------- Right column */}
+              <div className="min-w-0 space-y-6 lg:sticky lg:top-6">
+                <PricePanel
+                  footer={
+                    <p className="mt-2 text-center text-xs text-[var(--color-ink-muted)]">
+                      No payment taken in this demo.
+                    </p>
+                  }
+                />
 
-              {/* Readiness preview */}
-              <div>
-                <Eyebrow>Before you go</Eyebrow>
-                <h2 className="mt-2 text-2xl">
-                  Your {trip.destination.name} preparation programme
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm text-[var(--color-ink-muted)]">
-                  Delivered in stages from booking through to the first morning
-                  aboard. Here are the first few — the full programme is on the{" "}
+                <OperatorCard operator={trip.boat.operator} />
+
+                <Card className="p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+                    What the wind does here
+                  </p>
+                  <p className="mt-2 line-clamp-6 text-sm text-[var(--color-ink-muted)]">
+                    {trip.destination.windPattern}
+                  </p>
                   <Link
                     href={`/destinations/${trip.destination.slug}`}
-                    className="text-[var(--accent-strong)] hover:underline"
+                    className="mt-3 inline-block text-sm text-[var(--accent-strong)] hover:underline"
                   >
-                    destination page
+                    Full {trip.destination.name} briefing →
                   </Link>
-                  , published in full.
-                </p>
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  {trip.destination.readinessTasks.map((task) => (
-                    <Card key={task.id} className="p-5">
-                      <p className="font-medium">{task.title}</p>
-                      <p className="mt-1.5 text-sm text-[var(--color-ink-muted)]">
-                        {task.body}
-                      </p>
-                    </Card>
-                  ))}
-                </div>
+                </Card>
               </div>
             </div>
-
-            {/* -------------------------------------------- Right column */}
-            <div className="min-w-0 space-y-6 lg:sticky lg:top-6">
-              <Card className="p-6">
-                <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  All-in, {berths} {berths === 1 ? "person" : "people"}
-                </p>
-                <p className="mt-1">
-                  <span className="font-[family-name:var(--font-display)] text-3xl">
-                    {formatCents(quote.totalAllInCents)}
-                  </span>
-                  <span className="ml-2 text-sm text-[var(--color-ink-muted)]">
-                    {formatCents(quote.perPersonCents)} each
-                  </span>
-                </p>
-
-                {/* Party size */}
-                <div className="mt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Party size
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {Array.from({ length: maxBerths }, (_, i) => i + 1)
-                      .filter((n) => n >= 2 || maxBerths === 1)
-                      .map((n) => (
-                        <Link
-                          key={n}
-                          href={`/trips/${trip.slug}?departure=${departure.id}&berths=${n}`}
-                          scroll={false}
-                          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                            n === berths
-                              ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
-                              : "border-[var(--color-line)] text-[var(--color-ink-muted)] hover:border-navy-600"
-                          }`}
-                        >
-                          {n}
-                        </Link>
-                      ))}
-                  </div>
-                </div>
-
-                {/* Departures */}
-                <div className="mt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    Departure
-                  </p>
-                  <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                    {available.slice(0, 12).map((d) => {
-                      const free = d.berthsTotal - d.berthsBooked;
-                      const selected = d.id === departure.id;
-                      return (
-                        <Link
-                          key={d.id}
-                          href={`/trips/${trip.slug}?departure=${d.id}&berths=${berths}`}
-                          scroll={false}
-                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
-                            selected
-                              ? "border-[var(--accent-strong)] bg-[var(--accent-soft)]"
-                              : "border-[var(--color-line)] hover:border-navy-600"
-                          }`}
-                        >
-                          <span>{formatDateRange(d.startDate, d.endDate)}</span>
-                          <span className="text-xs text-[var(--color-ink-muted)]">
-                            {free <= 3 ? `${free} left` : `${free} free`}
-                          </span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <ButtonLink
-                  href={`/trips/${trip.slug}/book?departure=${departure.id}&berths=${berths}`}
-                  className="mt-6 w-full"
-                >
-                  Request this departure
-                </ButtonLink>
-                <p className="mt-2 text-center text-xs text-[var(--color-ink-muted)]">
-                  No payment taken in this demo.
-                </p>
-              </Card>
-
-              <OperatorCard operator={trip.boat.operator} />
-
-              <Card className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                  What the wind does here
-                </p>
-                <p className="mt-2 line-clamp-6 text-sm text-[var(--color-ink-muted)]">
-                  {trip.destination.windPattern}
-                </p>
-                <Link
-                  href={`/destinations/${trip.destination.slug}`}
-                  className="mt-3 inline-block text-sm text-[var(--accent-strong)] hover:underline"
-                >
-                  Full {trip.destination.name} briefing →
-                </Link>
-              </Card>
-            </div>
-          </div>
+          </TripPricingProvider>
         </Container>
       </Section>
     </div>

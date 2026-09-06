@@ -15,6 +15,15 @@
 export const IS_STATIC = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1";
 
 /**
+ * The prefix GitHub Pages serves a project site under, or "" everywhere else.
+ *
+ * Next rewrites `<Link>` hrefs and asset URLs itself; this is for the handful
+ * of places that build a URL by hand — a `fetch` of something in `public/`,
+ * which Next has no way to know about.
+ */
+export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+/**
  * The route segment config every page exports.
  *
  * `force-dynamic` is load-bearing for the server build: these pages read Prisma

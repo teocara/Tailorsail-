@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { buildCustomerQuote } from "@/lib/pricing/quote";
 import type { PriceComponentInput } from "@/lib/pricing/types";
 import { isConfigured } from "@/lib/ai/client";
-import { toggleReadiness } from "@/app/actions/booking";
 import { sendConciergeMessage } from "@/app/actions/concierge";
 import { PriceBreakdown } from "@/components/price-breakdown";
 import {
@@ -19,6 +18,7 @@ import {
 } from "@/components/ui";
 import { perRequest } from "@/lib/render-mode";
 import { IS_STATIC, liveAction } from "@/lib/static-mode";
+import { ReadinessChecklist } from "@/components/readiness-checklist";
 
 /**
  * Only the seeded bookings get a page in the static build.
@@ -132,8 +132,6 @@ export default async function BookingPage({
     berths: booking.berths,
   });
 
-  const done = booking.readiness.filter((r) => r.completedAt).length;
-  const total = booking.readiness.length;
 
   const escalationPending = await db.opsTask.findFirst({
     where: {
@@ -173,91 +171,26 @@ export default async function BookingPage({
           <div className="min-w-0 space-y-10">
             {/* Readiness checklist */}
             <div>
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <Eyebrow>Getting ready</Eyebrow>
-                  <h2 className="mt-1 text-2xl">
-                    Your {trip.destination.name} programme
-                  </h2>
-                </div>
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  {done} of {total} done
-                </p>
-              </div>
-
-              <div
-                className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-surface-sunk)]"
-                role="progressbar"
-                aria-valuenow={done}
-                aria-valuemin={0}
-                aria-valuemax={total}
-              >
-                <div
-                  className="h-full rounded-full bg-[var(--accent-strong)] transition-all"
-                  style={{ width: `${total ? (done / total) * 100 : 0}%` }}
-                />
-              </div>
-
-              <div className="mt-6 space-y-7">
-                {PHASES.map((phase) => {
-                  const rows = booking.readiness.filter(
-                    (r) => r.task.phase === phase,
-                  );
-                  if (rows.length === 0) return null;
-
-                  return (
-                    <div key={phase}>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-                        {PHASE_LABEL[phase]}
-                      </h3>
-                      <ul className="mt-3 space-y-2">
-                        {rows.map((row) => (
-                          <li key={row.id}>
-                            <form action={liveAction(toggleReadiness)}>
-                              <input type="hidden" name="id" value={row.id} />
-                              <input
-                                type="hidden"
-                                name="reference"
-                                value={booking.reference}
-                              />
-                              <button
-                                type="submit"
-                                disabled={IS_STATIC}
-                                className={`flex w-full gap-3 rounded-[var(--radius-card)] border p-4 text-left transition-colors ${
-                                  row.completedAt
-                                    ? "border-[var(--color-line)] bg-[var(--color-surface-sunk)]"
-                                    : "border-[var(--color-line)] hover:border-[var(--accent-strong)]"
-                                }`}
-                              >
-                                <span
-                                  aria-hidden
-                                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${
-                                    row.completedAt
-                                      ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
-                                      : "border-[var(--color-line)]"
-                                  }`}
-                                >
-                                  {row.completedAt ? "✓" : ""}
-                                </span>
-                                <span className="flex-1">
-                                  <span
-                                    className={`block font-medium ${row.completedAt ? "text-[var(--color-ink-muted)] line-through" : ""}`}
-                                  >
-                                    {row.task.title}
-                                  </span>
-                                  <span className="mt-1 block text-sm text-[var(--color-ink-muted)]">
-                                    {row.task.body}
-                                  </span>
-                                </span>
-                              </button>
-                            </form>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
-              </div>
+              <ReadinessChecklist
+                reference={booking.reference}
+                heading={
+                  <div>
+                    <Eyebrow>Getting ready</Eyebrow>
+                    <h2 className="mt-1 text-2xl">
+                      Your {trip.destination.name} programme
+                    </h2>
+                  </div>
+                }
+                phases={PHASES}
+                phaseLabel={PHASE_LABEL}
+                rows={booking.readiness.map((r) => ({
+                  id: r.id,
+                  title: r.task.title,
+                  body: r.task.body,
+                  phase: r.task.phase,
+                  done: Boolean(r.completedAt),
+                }))}
+              />
             </div>
 
             {/* Concierge thread */}
