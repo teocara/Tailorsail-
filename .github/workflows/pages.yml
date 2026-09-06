@@ -56,6 +56,11 @@ jobs:
       - name: Build
         run: npm run build:static
 
+      # Chromium only: the audit reads files and checks a handful of pages, so
+      # the other two engines would be install time spent on nothing.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
       # Audits the directory that is about to be uploaded — the cost and margin
       # scan runs over the published files themselves, including the RSC
       # payloads, rather than over a render of them.
