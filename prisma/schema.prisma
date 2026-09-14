@@ -1,0 +1,733 @@
+// Tailorsail data model.
+//
+// Two conventions run through the whole schema:
+//
+//  1. Money is always an integer number of EUR cents. Never a float.
+//  2. Cost and margin are internal. `netRateCents`, `marginCents` and any
+//     PriceComponent with visibility=INTERNAL must never reach a customer
+//     surface — lib/pricing/quote.ts is the single gate that enforces this.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Geography and destination briefings
+// ---------------------------------------------------------------------------
+
+model Region {
+  id           String        @id @default(cuid())
+  slug         String        @unique
+  name         String
+  country      String
+  summary      String
+  destinations Destination[]
+
+  createdAt DateTime @default(now())
+}
+
+/// A cruising ground. The briefing fields are not marketing copy — they are
+/// the grounding corpus the AI generates itineraries and readiness programmes
+/// from, which is what keeps the per-location detail accurate instead of
+/// generic. Edit these and the generated content changes with them.
+model Destination {
+  id       String @id @default(cuid())
+  slug     String @unique
+  name     String
+  regionId String
+  region   Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  tagline String
+  summary String
+
+  /// Prevailing wind and what it means for route planning (bora, maestral,
+  /// mistral, island thermals).
+  windPattern String
+  bestMonths  String
+  seaState    String
+  /// Minimum realistic skill level for this ground: FIRST_TIMER..SKIPPER
+  skillLevel  SkillLevel
+
+  nauticalHighlights String
+  marinaNotes        String
+  /// Permits, park zoning, anchoring restrictions — the things that ruin a
+  /// trip when nobody mentioned them.
+  localRules         String
+  gettingThere       String
+
+  heroFrom String @default("#0a1628")
+  heroTo   String @default("#2f8f8a")
+
+  /// Demand multiplier fed into the yield engine. 1.0 is neutral.
+  demandIndex Float @default(1.0)
+
+  trips          Trip[]
+  readinessTasks ReadinessTask[]
+  courses        Course[]
+  pricingRules   PricingRule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Supply side — operators, boats, trips, dated inventory
+// ---------------------------------------------------------------------------
+
+model Operator {
+  id      String       @id @default(cuid())
+  slug    String       @unique
+  name    String
+  type    OperatorType
+  baseNote String      @default("")
+  homePort String
+  about   String
+
+  // --- Verification (document-based; see README on what we do and don't claim)
+  status              OperatorStatus @default(PENDING)
+  licenceVerified     Boolean        @default(false)
+  licenceRef          String?
+  insuranceVerified   Boolean        @default(false)
+  insuranceExpiresAt  DateTime?
+  safetyDeclarationAt DateTime?
+  verifiedAt          DateTime?
+
+  // --- Commercial terms (internal)
+  commercialTier    CommercialTier @default(STANDARD)
+  /// Discount off the operator's rack rate this tier earns us, 0..1
+  netRateDiscountPct Float         @default(0.10)
+  /// Berths we pre-commit to. Deepest rate, but we carry the risk.
+  allotmentBerths   Int            @default(0)
+  paymentTermsDays  Int            @default(30)
+  contractedUntil   DateTime?
+
+  // --- Service signals (drive both trust badges and triage)
+  responseTimeHours Float @default(24)
+  ratingAvg         Float @default(0)
+  reviewCount       Int   @default(0)
+
+  boats   Boat[]
+  reviews Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Boat {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  type      BoatType
+  model     String
+  lengthM   Float
+  cabins    Int
+  berths    Int
+  heads     Int
+  builtYear Int
+  refitYear Int?
+  homePort  String
+  /// JSON array of amenity strings.
+  amenities String   @default("[]")
+
+  trips Trip[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The sellable product: a boat, on a cruising ground, in a given format.
+/// Dated availability and pricing live on Departure.
+model Trip {
+  id            String      @id @default(cuid())
+  slug          String      @unique
+  name          String
+  summary       String
+  boatId        String
+  boat          Boat        @relation(fields: [boatId], references: [id], onDelete: Cascade)
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  format       TripFormat
+  skipper      SkipperMode
+  skillLevel   SkillLevel
+  durationDays Int
+  startPort    String
+  endPort      String
+
+  /// Tailorsail Crew — the youth line. Sells by the berth and yields more per
+  /// hull than a whole-boat week, so this flag is commercial as well as brand.
+  isCrewTrip Boolean @default(false)
+  minAge     Int?
+  maxAge     Int?
+
+  heroFrom String @default("#12233d")
+  heroTo   String @default("#4baaa4")
+
+  itinerary       ItineraryDay[]
+  priceComponents PriceComponent[]
+  departures      Departure[]
+  readinessTasks  ReadinessTask[]
+  addOns          AddOn[]
+  reviews         Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([destinationId])
+  @@index([isCrewTrip])
+}
+
+/// A dated instance of a Trip. This is simultaneously the unit of inventory
+/// and the unit of pricing — netRateCents is what we pay the operator,
+/// sellPriceCents is what we charge, and the difference is the business.
+model Departure {
+  id     String @id @default(cuid())
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  startDate DateTime
+  endDate   DateTime
+
+  berthsTotal  Int
+  berthsBooked Int @default(0)
+
+  /// INTERNAL. What we pay the operator for this departure.
+  netRateCents Int
+  /// What the customer pays for the base charter, before add-ons and extras.
+  sellPriceCents Int
+
+  /// Guardrails for the yield engine. Below the floor we're not covering our
+  /// cost of service; above the ceiling we're taxing the repeat rate the
+  /// brand depends on. Either way it becomes an ops task, not a silent price.
+  marginFloorPct   Float @default(0.12)
+  marginCeilingPct Float @default(0.42)
+
+  acquisition    AcquisitionChannel @default(ON_REQUEST)
+  priceUpdatedAt DateTime           @default(now())
+
+  priceHistory PriceHistory[]
+  bookings     BookingRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId])
+  @@index([startDate])
+}
+
+// ---------------------------------------------------------------------------
+// Pricing
+// ---------------------------------------------------------------------------
+
+/// One line of the all-in price breakdown. CUSTOMER rows are the transparency
+/// promise — every euro the traveller will pay, including at the marina.
+/// INTERNAL rows carry our cost detail and are filtered out at the query layer.
+model PriceComponent {
+  id     String @id @default(cuid())
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  label      String
+  amountCents Int
+  kind       PriceComponentKind
+  payableAt  PayableAt          @default(BOOKING)
+  visibility Visibility         @default(CUSTOMER)
+  /// Per-person components multiply by berths; per-booking ones don't.
+  perPerson  Boolean            @default(false)
+  note       String?
+  order      Int                @default(0)
+
+  @@index([tripId])
+}
+
+/// Upsells with their own cost and price, so attach margin is measured rather
+/// than assumed. Courses, skipper upgrade, provisioning, transfers, cleaning.
+model AddOn {
+  id     String  @id @default(cuid())
+  tripId String?
+  trip   Trip?   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  slug        String
+  name        String
+  description String
+  category    AddOnCategory
+
+  /// INTERNAL cost to us.
+  netRateCents   Int
+  sellPriceCents Int
+  perPerson      Boolean @default(false)
+  /// Null tripId + global=true means offered on every trip.
+  global         Boolean @default(false)
+
+  bookingAddOns BookingAddOn[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([slug, tripId])
+}
+
+/// Yield logic as data, so the two founders can retune pricing from /ops
+/// without a deploy.
+model PricingRule {
+  id            String          @id @default(cuid())
+  name          String
+  kind          PricingRuleKind
+  /// Scope: null destination = applies globally.
+  destinationId String?
+  destination   Destination?    @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+
+  /// Interpretation depends on kind: month number for SEASON, days-to-departure
+  /// for LEAD_TIME, occupancy ratio for OCCUPANCY.
+  thresholdMin Float
+  thresholdMax Float
+  multiplier   Float
+  active       Boolean @default(true)
+  note         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Every published price we have ever charged, with the reason it changed.
+/// Two jobs: audit trail for the yield engine, and the only lawful source for
+/// a "was" price (EU Omnibus requires the lowest of the prior 30 days).
+model PriceHistory {
+  id          String    @id @default(cuid())
+  departureId String
+  departure   Departure @relation(fields: [departureId], references: [id], onDelete: Cascade)
+
+  sellPriceCents Int
+  netRateCents   Int
+  effectiveFrom  DateTime @default(now())
+  reason         String
+
+  @@index([departureId, effectiveFrom])
+}
+
+// ---------------------------------------------------------------------------
+// Content — itineraries, readiness programmes, courses
+// ---------------------------------------------------------------------------
+
+model ItineraryDay {
+  id     String @id @default(cuid())
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  dayNumber     Int
+  title         String
+  fromPort      String
+  toPort        String
+  nauticalMiles Float
+  description   String
+  highlight     String
+
+  /// Provenance. AI_GENERATED content with a null reviewedAt is surfaced in
+  /// /ops for a human pass — generated text never quietly becomes canon.
+  source     ContentSource @default(AI_GENERATED)
+  reviewedAt DateTime?
+
+  @@unique([tripId, dayNumber])
+}
+
+/// The pre-trip programme. Phased so the traveller gets the right thing at the
+/// right time rather than a wall of advice at booking.
+model ReadinessTask {
+  id            String       @id @default(cuid())
+  destinationId String?
+  destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  tripId        String?
+  trip          Trip?        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  phase       ReadinessPhase
+  title       String
+  body        String
+  weeksBefore Int
+  order       Int            @default(0)
+
+  source     ContentSource @default(AI_GENERATED)
+  reviewedAt DateTime?
+
+  completions BookingReadiness[]
+
+  @@index([destinationId])
+}
+
+model Course {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  name          String
+  summary       String
+  level         CourseLevel
+  format        CourseFormat
+  durationHours Int
+  priceCents    Int
+  /// INTERNAL — what the course costs us to deliver.
+  netRateCents  Int          @default(0)
+  certification String?
+  /// JSON array of module strings.
+  syllabus      String       @default("[]")
+
+  destinationId String?
+  destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Demand side — users, bookings, messaging
+// ---------------------------------------------------------------------------
+
+model User {
+  id    String   @id @default(cuid())
+  email String   @unique
+  name  String
+  role  UserRole @default(TRAVELER)
+
+  bookings BookingRequest[]
+  messages Message[]
+
+  createdAt DateTime @default(now())
+}
+
+model BookingRequest {
+  id          String    @id @default(cuid())
+  reference   String    @unique
+  departureId String
+  departure   Departure @relation(fields: [departureId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  berths         Int
+  status         BookingStatus @default(REQUESTED)
+  experienceNote String        @default("")
+  notes          String        @default("")
+
+  // --- Frozen commercial snapshot.
+  // Captured at booking time so a later yield run cannot retroactively change
+  // what this customer owes, or what we thought we earned on them.
+  netRateCents   Int
+  sellPriceCents Int
+  extrasCents    Int @default(0)
+  addOnsCents    Int @default(0)
+  totalCents     Int
+  marginCents    Int
+
+  addOns     BookingAddOn[]
+  readiness  BookingReadiness[]
+  thread     MessageThread?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departureId])
+}
+
+model BookingAddOn {
+  id        String         @id @default(cuid())
+  bookingId String
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  addOnId   String
+  addOn     AddOn          @relation(fields: [addOnId], references: [id], onDelete: Cascade)
+
+  quantity       Int @default(1)
+  sellPriceCents Int
+  netRateCents   Int
+
+  @@unique([bookingId, addOnId])
+}
+
+model BookingReadiness {
+  id        String         @id @default(cuid())
+  bookingId String
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      ReadinessTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  completedAt DateTime?
+
+  @@unique([bookingId, taskId])
+}
+
+model MessageThread {
+  id        String         @id @default(cuid())
+  bookingId String         @unique
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id       String        @id @default(cuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  /// Who actually wrote this. CONCIERGE_AI vs CONCIERGE_HUMAN is surfaced in
+  /// the UI — the transcript is honest about which replies were automated.
+  authorRole MessageAuthor
+  authorId   String?
+  author     User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  body String
+
+  /// Classification from the concierge router, kept for auditing the
+  /// auto-send policy after the fact.
+  aiCategory   String?
+  aiConfidence Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+model Review {
+  id         String    @id @default(cuid())
+  operatorId String
+  operator   Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  tripId     String?
+  trip       Trip?     @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  authorName String
+  rating     Int
+  body       String
+
+  createdAt DateTime @default(now())
+
+  @@index([operatorId])
+}
+
+/// A prospective operator's submission, before it becomes an Operator record.
+model HostApplication {
+  id           String @id @default(cuid())
+  contactName  String
+  contactEmail String
+  companyName  String
+  homePort     String
+  /// What the operator actually wrote, kept verbatim next to the extraction so
+  /// a human can check the AI against the source.
+  rawSubmission String
+  /// JSON: the structured listing parse-listing produced.
+  extractedJson String @default("{}")
+  /// JSON array of strings: what's missing before we can verify them.
+  gapsJson      String @default("[]")
+  proposedTier  CommercialTier @default(STANDARD)
+  tierRationale String         @default("")
+
+  status HostApplicationStatus @default(SUBMITTED)
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// AI operations layer
+// ---------------------------------------------------------------------------
+
+/// The two-person work queue. Everything that needs a human lands here,
+/// pre-triaged with a summary, a recommendation and a draft to approve or edit.
+model OpsTask {
+  id       String       @id @default(cuid())
+  kind     OpsTaskKind
+  status   OpsTaskStatus @default(OPEN)
+  priority Int          @default(50)
+
+  title       String
+  subjectType String
+  subjectId   String
+
+  aiSummary        String @default("")
+  aiRecommendation String @default("")
+  aiDraft          String @default("")
+
+  resolvedAt DateTime?
+  resolvedBy String?
+  resolution String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, priority])
+}
+
+/// One row per Claude call. This is the entire cost dashboard — a two-person
+/// company needs to see AI spend without standing up observability.
+model AiRun {
+  id      String @id @default(cuid())
+  feature String
+  model   String
+  effort  String
+
+  inputTokens     Int @default(0)
+  outputTokens    Int @default(0)
+  cacheReadTokens Int @default(0)
+  cacheWriteTokens Int @default(0)
+
+  latencyMs Int     @default(0)
+  ok        Boolean @default(true)
+  error     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([feature, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OperatorType {
+  CHARTER_COMPANY
+  PRIVATE_OWNER
+}
+
+enum OperatorStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+}
+
+enum CommercialTier {
+  STANDARD
+  PREFERRED
+  EXCLUSIVE
+}
+
+enum BoatType {
+  MONOHULL
+  CATAMARAN
+  GULET
+}
+
+enum TripFormat {
+  WHOLE_BOAT
+  CABIN_CHARTER
+  FLOTILLA
+}
+
+enum SkipperMode {
+  SKIPPERED
+  BAREBOAT
+}
+
+enum SkillLevel {
+  FIRST_TIMER
+  COMPETENT_CREW
+  SKIPPER
+}
+
+enum AcquisitionChannel {
+  ALLOTMENT
+  ON_REQUEST
+  DISTRESSED
+  REPOSITIONING
+}
+
+enum PriceComponentKind {
+  INCLUDED
+  MANDATORY_EXTRA
+  REFUNDABLE_DEPOSIT
+  OPTIONAL
+}
+
+enum PayableAt {
+  BOOKING
+  MARINA
+}
+
+enum Visibility {
+  CUSTOMER
+  INTERNAL
+}
+
+enum AddOnCategory {
+  COURSE
+  CREW
+  PROVISIONING
+  TRANSFER
+  SERVICE
+}
+
+enum PricingRuleKind {
+  SEASON
+  LEAD_TIME
+  OCCUPANCY
+  DAY_OF_WEEK
+}
+
+enum ContentSource {
+  AI_GENERATED
+  HUMAN_EDITED
+}
+
+enum ReadinessPhase {
+  BOOK
+  PREPARE
+  PACK
+  ARRIVE
+}
+
+enum CourseLevel {
+  FIRST_TIMER
+  COMPETENT_CREW
+  SKIPPER
+  THEORY
+}
+
+enum CourseFormat {
+  ONLINE
+  ONBOARD
+  HYBRID
+}
+
+enum UserRole {
+  TRAVELER
+  OWNER
+  OPERATOR
+  ADMIN
+}
+
+enum BookingStatus {
+  REQUESTED
+  CONFIRMED
+  DECLINED
+  CANCELLED
+}
+
+enum MessageAuthor {
+  TRAVELER
+  OPERATOR
+  CONCIERGE_AI
+  CONCIERGE_HUMAN
+}
+
+enum HostApplicationStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum OpsTaskKind {
+  OPERATOR_APPROVAL
+  ESCALATED_MESSAGE
+  BOOKING_EXCEPTION
+  EXPIRING_DOCUMENT
+  CONTENT_REVIEW
+  RATE_OPPORTUNITY
+  PRICE_OUT_OF_BAND
+  LOW_OCCUPANCY
+}
+
+enum OpsTaskStatus {
+  OPEN
+  DONE
+  DISMISSED
+}
