@@ -12,6 +12,7 @@ import {
   GradientHero,
   Section,
 } from "@/components/ui";
+import { CatamaranHero } from "@/components/catamaran-hero";
 import { perRequest } from "@/lib/render-mode";
 
 const PILLARS = [
@@ -52,6 +53,14 @@ export default async function HomePage() {
     <>
       {/* ------------------------------------------------------------- Hero */}
       <GradientHero from="#0a1628" to="#2f8f8a" className="text-white">
+        {/*
+          Positioned absolute, after GradientHero's own gradient layers and
+          before Container in DOM order — positioned siblings paint in DOM
+          order within a stacking context, so the boat sits above the
+          gradient and Container (also `relative`) still paints on top of it,
+          keeping the text and search box readable and clickable.
+        */}
+        <CatamaranHero />
         <Container className="relative py-20 sm:py-28">
           <div className="max-w-2xl">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
