@@ -21,13 +21,21 @@ const WAVES = [
   { dir: [-0.4, 0.7], length: 1.7, speed: 1.8, amp: 0.045 },
 ] as const;
 
-/** Mirrors the vertex shader's displacement — kept in JS so the hull can ride the same surface it's drawn on. */
+/**
+ * Mirrors the vertex shader's displacement — kept in JS so the hull can ride
+ * the same surface it's drawn on. The shader normalizes each wave's direction
+ * before the dot product (`normalize(vec2(...))`); this has to as well; the
+ * configured directions aren't unit length, so skipping it silently changes
+ * the effective wavelength and puts the boat's sampled height out of step
+ * with the surface actually drawn beneath it.
+ */
 function waveHeight(x: number, z: number, t: number): number {
   let y = 0;
   for (const w of WAVES) {
     const [dx, dz] = w.dir;
+    const len = Math.hypot(dx, dz);
     const k = (2 * Math.PI) / w.length;
-    y += w.amp * Math.sin(x * dx * k + z * dz * k + t * w.speed);
+    y += w.amp * Math.sin(((x * dx + z * dz) / len) * k + t * w.speed);
   }
   return y;
 }
@@ -375,28 +383,35 @@ export default function mountCatamaranScene(
   resizeObserver.observe(container);
   resize();
 
-  function handleVisibility() {
-    if (document.hidden) {
-      running = false;
-    } else if (!running) {
+  // Two independent reasons to pause, tracked separately so resuming one
+  // never overrides the other: switching back to a tab whose hero is
+  // scrolled out of view must not restart the loop, and hiding the tab must
+  // not leave a requestAnimationFrame queued to fire — unpaused — the moment
+  // the tab returns, running alongside the fresh loop that resuming starts.
+  // A pending frame is exactly that kind of live callback, so every path
+  // that sets `running = false` cancels it in the same breath.
+  let isIntersecting = true;
+
+  function updateRunning() {
+    const shouldRun = !document.hidden && isIntersecting;
+    if (shouldRun && !running) {
       running = true;
       loop();
+    } else if (!shouldRun && running) {
+      running = false;
+      cancelAnimationFrame(raf);
     }
   }
-  document.addEventListener("visibilitychange", handleVisibility);
+
+  document.addEventListener("visibilitychange", updateRunning);
 
   // Rendering also pauses off-screen — the home page is long, and there is
   // no reason to keep a GPU loop running under six sections of scrolled-past
   // content, especially on battery.
   const intersectionObserver = new IntersectionObserver(
     ([entry]) => {
-      const visible = entry.isIntersecting;
-      if (visible && !running) {
-        running = true;
-        loop();
-      } else if (!visible) {
-        running = false;
-      }
+      isIntersecting = entry.isIntersecting;
+      updateRunning();
     },
     { threshold: 0.01 },
   );
@@ -416,7 +431,7 @@ export default function mountCatamaranScene(
     cancelAnimationFrame(raf);
     resizeObserver.disconnect();
     intersectionObserver.disconnect();
-    document.removeEventListener("visibilitychange", handleVisibility);
+    document.removeEventListener("visibilitychange", updateRunning);
     canvas.removeEventListener("webglcontextlost", handleContextLost);
 
     scene.traverse((obj) => {
