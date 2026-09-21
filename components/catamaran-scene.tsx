@@ -347,8 +347,16 @@ interface ParticleSystemConfig {
   /** Seconds for one point's full outward travel before it recycles. */
   life: number;
   sizeBase: number;
-  /** Downward pull applied over the point's life — 0 keeps it level (a wake); >0 arcs it down (spray falling back to the water). */
-  gravity: number;
+  /**
+   * 0 keeps the point's height rising linearly to `aBase.y` (a wake, sitting
+   * just above the surface); 1 arcs it up to `aBase.y` and back down to
+   * exactly 0 by the end of its life (spray). Both curves are bounded to
+   * [0, aBase.y] for t in [0, 1] — the point can never dip below the water
+   * line partway through its life the way a naive `height - gravity*t²` fall
+   * can, which left most of a steep fall submerged and depth-occluded by the
+   * opaque ocean well before its own fade-out finished.
+   */
+  arc: number;
   pixelRatio: number;
   color: THREE.ColorRepresentation;
   /** The local-space vector each point travels from origin to at the end of its life. Called once per point at creation, so randomize inside it. */
@@ -362,7 +370,7 @@ interface ParticleSystemConfig {
  * needs no per-frame CPU buffer updates.
  */
 function createParticleSystem(config: ParticleSystemConfig) {
-  const { count, life, sizeBase, gravity, pixelRatio, color, makeBase } = config;
+  const { count, life, sizeBase, arc, pixelRatio, color, makeBase } = config;
   const base = new Float32Array(count * 3);
   const phase = new Float32Array(count);
   for (let i = 0; i < count; i++) {
@@ -390,7 +398,7 @@ function createParticleSystem(config: ParticleSystemConfig) {
       uLife: { value: life },
       uPixelRatio: { value: pixelRatio },
       uSize: { value: sizeBase },
-      uGravity: { value: gravity },
+      uArc: { value: arc },
       uColor: { value: new THREE.Color(color) },
     },
     vertexShader: `
@@ -400,13 +408,16 @@ function createParticleSystem(config: ParticleSystemConfig) {
       uniform float uLife;
       uniform float uPixelRatio;
       uniform float uSize;
-      uniform float uGravity;
+      uniform float uArc;
       varying float vAlpha;
       void main() {
         float cycle = mod(uTime + aPhase * uLife, uLife);
         float t01 = cycle / uLife;
-        vec3 pos = aBase * t01;
-        pos.y -= uGravity * t01 * t01;
+        // A linear rise (uArc 0) or a symmetric up-and-down arc (uArc 1),
+        // mixed by config — both stay within [0, aBase.y] for t01 in [0, 1],
+        // so the point never dips below the water line partway through.
+        float heightCurve = mix(t01, 4.0 * t01 * (1.0 - t01), uArc);
+        vec3 pos = vec3(aBase.x * t01, aBase.y * heightCurve, aBase.z * t01);
         // Ascending edges, then inverted — smoothstep's result is undefined
         // in GLSL ES when edge0 >= edge1, so the fade-out can't just swap
         // the arguments of an ascending call.
@@ -552,13 +563,16 @@ function createBoat(
     count: isMobile ? 22 : 40,
     life: 0.9,
     sizeBase: 9,
-    gravity: 2.6,
+    arc: 1,
     pixelRatio,
     color: 0xf6fbfa,
     makeBase: () => {
       const z = (Math.random() * 2 - 1) * beam * 0.6;
       const out = Math.sign(z || 1) * (0.12 + Math.random() * 0.3);
-      return new THREE.Vector3(-0.15 - Math.random() * 0.25, 0.22 + Math.random() * 0.4, z + out);
+      // aBase.y is now the droplet's literal peak height (the arc curve
+      // returns to exactly 0 by the end of its life either way), so this is
+      // a modest hop rather than a magic constant tuned against a fall rate.
+      return new THREE.Vector3(-0.15 - Math.random() * 0.25, 0.08 + Math.random() * 0.14, z + out);
     },
   });
   spray.points.position.set(hullLength * 0.47, 0.05, 0);
@@ -568,7 +582,7 @@ function createBoat(
     count: isMobile ? 28 : 52,
     life: 3.4,
     sizeBase: 22,
-    gravity: 0,
+    arc: 0,
     pixelRatio,
     color: 0xdfeceb,
     makeBase: () => {
