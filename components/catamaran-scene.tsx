@@ -407,7 +407,10 @@ function createParticleSystem(config: ParticleSystemConfig) {
         float t01 = cycle / uLife;
         vec3 pos = aBase * t01;
         pos.y -= uGravity * t01 * t01;
-        vAlpha = smoothstep(0.0, 0.12, t01) * smoothstep(1.0, 0.55, t01);
+        // Ascending edges, then inverted — smoothstep's result is undefined
+        // in GLSL ES when edge0 >= edge1, so the fade-out can't just swap
+        // the arguments of an ascending call.
+        vAlpha = smoothstep(0.0, 0.12, t01) * (1.0 - smoothstep(0.55, 1.0, t01));
         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
         gl_PointSize = uSize * (1.0 - t01 * 0.5) * uPixelRatio / max(-mvPosition.z, 0.001);
         gl_Position = projectionMatrix * mvPosition;
@@ -420,7 +423,7 @@ function createParticleSystem(config: ParticleSystemConfig) {
         vec2 c = gl_PointCoord - vec2(0.5);
         float d = length(c);
         if (d > 0.5) discard;
-        float a = smoothstep(0.5, 0.0, d) * vAlpha;
+        float a = (1.0 - smoothstep(0.0, 0.5, d)) * vAlpha;
         gl_FragColor = vec4(uColor, a);
       }
     `,
@@ -486,6 +489,9 @@ function createBoat(
   boom.position.set(-hullLength * 0.08 + hullLength * 0.17, 0.4, 0);
   group.add(boom);
 
+  const mastTop = new THREE.Vector3(mast.position.x, 0.12 + mastHeight, 0);
+  const bowPoint = new THREE.Vector3(hullLength * 0.46, 0.12, 0);
+
   const sailShape = new THREE.Shape();
   sailShape.moveTo(0, 0);
   sailShape.lineTo(0, mastHeight * 0.92);
@@ -499,33 +505,38 @@ function createBoat(
 
   // Jib: a second, smaller headsail forward of the mast — the detail that
   // reads as "sailboat under way" in silhouette rather than "sail on a
-  // stick". Built the same way as the mainsail, just smaller and shifted
-  // toward the bow, low enough to clear the mainsail's foot from this
-  // camera angle instead of being hidden directly behind it — the mainsail
-  // and jib are both offset from the mast along the boat's own length axis,
-  // which is the axis this composition views nearly end-on, so without that
-  // vertical and forward separation the jib renders fully occluded.
-  const jibShape = new THREE.Shape();
-  jibShape.moveTo(0, 0);
-  jibShape.lineTo(0, mastHeight * 0.42);
-  jibShape.quadraticCurveTo(hullLength * 0.24, mastHeight * 0.15, hullLength * 0.26, 0);
-  jibShape.lineTo(0, 0);
-  const jibGeometry = new THREE.ShapeGeometry(jibShape, 5);
+  // stick". Built as three explicit points rather than the mainsail's
+  // flat-shape-plus-rotation trick: that trick maps the shape's local width
+  // into world Z (sideways) rather than along the boat's own length, which
+  // reads fine for one sail but would leave a second one spanning sideways
+  // and visually disconnected from the mast instead of looking like a jib.
+  // Here the luff genuinely runs from the bow up the forestay to the mast;
+  // only the clew is swept out to the side — a jib sheeted out, not a jib
+  // floating loose — which also keeps it clear of the mainsail's footprint
+  // from this camera angle.
+  const jibHead = new THREE.Vector3(mast.position.x, 0.12 + mastHeight * 0.66, 0);
+  const jibClew = new THREE.Vector3(hullLength * 0.14, 0.15, beam * 0.3);
+  const jibGeometry = new THREE.BufferGeometry();
+  jibGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [
+        bowPoint.x, bowPoint.y, bowPoint.z,
+        jibHead.x, jibHead.y, jibHead.z,
+        jibClew.x, jibClew.y, jibClew.z,
+      ],
+      3,
+    ),
+  );
+  jibGeometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 0], 2));
+  jibGeometry.setIndex([0, 1, 2]);
   const jib = new THREE.Mesh(jibGeometry, createSailMaterial(palette.sail));
-  // Poled out to one side rather than dead-centre — besides being a real
-  // downwind trim (whisker-poling the jib), the sideways offset is what
-  // keeps it from rendering directly behind the mainsail: both sails hang
-  // off the same fore-aft axis, which is the axis this camera angle
-  // foreshortens the most.
-  jib.position.set(hullLength * 0.4, 0.16, beam * 0.22);
-  jib.rotation.y = Math.PI / 2;
   group.add(jib);
 
-  const mastTop = new THREE.Vector3(mast.position.x, 0.12 + mastHeight, 0);
   const rigging = createRigging(
     {
       mastTop,
-      bow: new THREE.Vector3(hullLength * 0.46, 0.12, 0),
+      bow: bowPoint,
       stern: new THREE.Vector3(-hullLength * 0.46, 0.12, 0),
       shroudPort: new THREE.Vector3(mast.position.x, 0.12, -beam * 0.42),
       shroudStbd: new THREE.Vector3(mast.position.x, 0.12, beam * 0.42),
