@@ -4,11 +4,11 @@ import * as THREE from "three";
  * The 3D scene itself. Loaded only on the client, only when WebGL is
  * available — see `catamaran-hero.tsx` for the gate and the fallback.
  *
- * Built entirely from primitive geometry and two small shaders, not an
- * imported model or texture: the same reason `GradientHero` uses a CSS
- * gradient instead of a stock photo applies here — there is no real boat to
- * license or misrepresent, so the honest option is something everyone can see
- * is drawn, not photographed.
+ * Built entirely from primitive geometry and small shaders, not an imported
+ * model or texture: the same reason `GradientHero` uses a CSS gradient
+ * instead of a stock photo applies here — there is no real boat to license
+ * or misrepresent, so the honest option is something everyone can see is
+ * drawn, not photographed.
  *
  * The ocean and the boat's motion both evaluate `waveHeight()` — one formula,
  * so the hull actually sits on the surface the shader draws rather than
@@ -136,28 +136,146 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
   return { mesh: new THREE.Mesh(geometry, material), material };
 }
 
-/** One hull, as an extruded side-profile — a bow curve, a flat run, a transom. */
-function createHull(length: number, height: number, width: number, color: THREE.ColorRepresentation) {
-  const shape = new THREE.Shape();
-  const halfL = length / 2;
-  shape.moveTo(halfL, height * 0.55);
-  shape.quadraticCurveTo(halfL * 1.02, -height * 0.1, halfL * 0.55, -height * 0.5);
-  shape.lineTo(-halfL * 0.85, -height * 0.42);
-  shape.quadraticCurveTo(-halfL * 1.05, -height * 0.1, -halfL, height * 0.5);
-  shape.lineTo(halfL, height * 0.55);
+function easeInOut(t: number): number {
+  return t * t * (3 - 2 * t);
+}
 
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: width,
-    bevelEnabled: true,
-    bevelThickness: 0.02,
-    bevelSize: 0.02,
-    bevelSegments: 1,
-    curveSegments: 8,
+/** Beam (half-width) as a fraction of max, along the hull's length: full amidships, tapering to a point at the bow, eased in from a slightly narrower transom. */
+function hullBeamProfile(u: number): number {
+  const sternRamp = easeInOut(THREE.MathUtils.clamp(u / 0.12, 0, 1));
+  const bowT = THREE.MathUtils.clamp((u - 0.42) / 0.58, 0, 1);
+  const bowTaper = Math.pow(1 - bowT, 1.6);
+  return (0.78 + 0.22 * sternRamp) * bowTaper;
+}
+
+/** Draft (half-depth) along the hull's length: deepest amidships, shoaling toward a fine bow entry that still holds some depth. */
+function hullDraftProfile(u: number): number {
+  const sternRamp = easeInOut(THREE.MathUtils.clamp(u / 0.15, 0, 1));
+  const bowT = THREE.MathUtils.clamp((u - 0.5) / 0.5, 0, 1);
+  const bowTaper = 0.45 + 0.55 * Math.pow(1 - bowT, 1.2);
+  return (0.7 + 0.3 * sternRamp) * bowTaper;
+}
+
+/** Keel rocker: lifts the bow's centerline for a wave-piercing profile instead of a straight keel. */
+function hullRocker(u: number): number {
+  const bowT = THREE.MathUtils.clamp((u - 0.55) / 0.45, 0, 1);
+  return Math.pow(bowT, 2) * 0.16;
+}
+
+/**
+ * One half cross-section, keel to near-centerline-at-deck (z, y in [-1, 1]
+ * unit space), mirrored below to close the ring. The loop pinches to a point
+ * at the top rather than opening onto a deck — the deck box added in
+ * `createBoat` covers that seam, so the hull only needs to read as rounded,
+ * not be watertight.
+ */
+const HULL_RING: ReadonlyArray<readonly [number, number]> = [
+  [0.0, -1.0],
+  [0.3, -0.95],
+  [0.62, -0.75],
+  [0.88, -0.4],
+  [1.0, -0.05],
+  [0.92, 0.35],
+  [0.55, 0.75],
+  [0.15, 1.0],
+  [-0.15, 1.0],
+  [-0.55, 0.75],
+  [-0.92, 0.35],
+  [-1.0, -0.05],
+  [-0.88, -0.4],
+  [-0.62, -0.75],
+  [-0.3, -0.95],
+];
+
+/** Lofts `HULL_RING` along the hull's length, tapered per-station by the profile functions above, into a real rounded hull instead of a flat extruded plank. */
+function buildHullGeometry(
+  length: number,
+  height: number,
+  width: number,
+  palette: { hull: THREE.Color; boot: THREE.Color; antifouling: THREE.Color },
+): THREE.BufferGeometry {
+  const stations = 18;
+  const ringCount = HULL_RING.length;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+
+  // A boot-stripe band at the waterline and darker antifouling below it —
+  // the same ring shape at every station, so the bands run straight down
+  // the hull's length rather than needing to be laid out per-station.
+  const colorFor = (yu: number) => {
+    if (yu < -0.5) return palette.antifouling;
+    if (yu < -0.3) return palette.boot;
+    return palette.hull;
+  };
+
+  for (let s = 0; s <= stations; s++) {
+    const u = s / stations;
+    const x = -length / 2 + u * length;
+    const beam = (hullBeamProfile(u) * width) / 2;
+    const draft = (hullDraftProfile(u) * height) / 2;
+    const rocker = hullRocker(u) * height;
+    for (const [zu, yu] of HULL_RING) {
+      positions.push(x, yu * draft + rocker, zu * beam);
+      const c = colorFor(yu);
+      colors.push(c.r, c.g, c.b);
+    }
+  }
+
+  for (let s = 0; s < stations; s++) {
+    for (let r = 0; r < ringCount; r++) {
+      const r2 = (r + 1) % ringCount;
+      const a = s * ringCount + r;
+      const b = s * ringCount + r2;
+      const c = (s + 1) * ringCount + r2;
+      const d = (s + 1) * ringCount + r;
+      indices.push(a, b, c, a, c, d);
+    }
+  }
+
+  // Bow: fan the final ring to a single point just beyond it for a proper tip.
+  const bowTipIndex = positions.length / 3;
+  positions.push(length / 2 + length * 0.035, hullRocker(1) * height, 0);
+  colors.push(palette.hull.r, palette.hull.g, palette.hull.b);
+  const lastRingStart = stations * ringCount;
+  for (let r = 0; r < ringCount; r++) {
+    const r2 = (r + 1) % ringCount;
+    indices.push(lastRingStart + r, lastRingStart + r2, bowTipIndex);
+  }
+
+  // Stern: fan-cap the first ring flat, for a cut transom rather than a point.
+  const sternCenterIndex = positions.length / 3;
+  positions.push(-length / 2, 0, 0);
+  colors.push(palette.antifouling.r, palette.antifouling.g, palette.antifouling.b);
+  for (let r = 0; r < ringCount; r++) {
+    const r2 = (r + 1) % ringCount;
+    indices.push(r2, r, sternCenterIndex);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** One hull: a lofted, rounded body with a waterline boot-stripe, rather than a flat extruded plank. */
+function createHull(
+  length: number,
+  height: number,
+  width: number,
+  palette: { hull: THREE.Color; boot: THREE.Color; antifouling: THREE.Color },
+) {
+  const geometry = buildHullGeometry(length, height, width, palette);
+  // DoubleSide guards against a stray inverted-winding triangle in the hand-
+  // built end caps showing up as a black facet rather than a lit one.
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.32,
+    metalness: 0.12,
+    side: THREE.DoubleSide,
   });
-  geometry.translate(0, 0, -width / 2);
-  geometry.rotateY(Math.PI / 2);
-
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
   return new THREE.Mesh(geometry, material);
 }
 
@@ -198,12 +316,151 @@ function createSailMaterial(color: THREE.ColorRepresentation) {
   });
 }
 
-function createBoat(palette: {
-  hull: THREE.ColorRepresentation;
-  deck: THREE.ColorRepresentation;
-  mast: THREE.ColorRepresentation;
-  sail: THREE.ColorRepresentation;
-}) {
+/** Thin standing rigging (forestay, backstay, two shrouds) as plain lines — silhouette detail, not structure. */
+function createRigging(
+  points: {
+    mastTop: THREE.Vector3;
+    bow: THREE.Vector3;
+    stern: THREE.Vector3;
+    shroudPort: THREE.Vector3;
+    shroudStbd: THREE.Vector3;
+  },
+  color: THREE.ColorRepresentation,
+) {
+  const pairs: [THREE.Vector3, THREE.Vector3][] = [
+    [points.mastTop, points.bow],
+    [points.mastTop, points.stern],
+    [points.mastTop, points.shroudPort],
+    [points.mastTop, points.shroudStbd],
+  ];
+  const positions: number[] = [];
+  for (const [a, b] of pairs) positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 });
+  return new THREE.LineSegments(geometry, material);
+}
+
+interface ParticleSystemConfig {
+  count: number;
+  /** Seconds for one point's full outward travel before it recycles. */
+  life: number;
+  sizeBase: number;
+  /**
+   * 0 keeps the point's height rising linearly to `aBase.y` (a wake, sitting
+   * just above the surface); 1 arcs it up to `aBase.y` and back down to
+   * exactly 0 by the end of its life (spray). Both curves are bounded to
+   * [0, aBase.y] for t in [0, 1] — the point can never dip below the water
+   * line partway through its life the way a naive `height - gravity*t²` fall
+   * can, which left most of a steep fall submerged and depth-occluded by the
+   * opaque ocean well before its own fade-out finished.
+   */
+  arc: number;
+  pixelRatio: number;
+  color: THREE.ColorRepresentation;
+  /** The local-space vector each point travels from origin to at the end of its life. Called once per point at creation, so randomize inside it. */
+  makeBase: () => THREE.Vector3;
+}
+
+/**
+ * GPU-recycled point sprites: each point's position is computed in the
+ * vertex shader from a fixed per-point "destination" vector and a
+ * phase-shifted clock, so animating a spray or wake costs one draw call and
+ * needs no per-frame CPU buffer updates.
+ */
+function createParticleSystem(config: ParticleSystemConfig) {
+  const { count, life, sizeBase, arc, pixelRatio, color, makeBase } = config;
+  const base = new Float32Array(count * 3);
+  const phase = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const v = makeBase();
+    base[i * 3] = v.x;
+    base[i * 3 + 1] = v.y;
+    base[i * 3 + 2] = v.z;
+    phase[i] = Math.random();
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  // A `position` attribute is required by the geometry's bounding-sphere
+  // math even though the shader recomputes the real position every frame;
+  // frustum culling is disabled below instead of relying on this estimate.
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+  geometry.setAttribute("aBase", new THREE.BufferAttribute(base, 3));
+  geometry.setAttribute("aPhase", new THREE.BufferAttribute(phase, 1));
+
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uLife: { value: life },
+      uPixelRatio: { value: pixelRatio },
+      uSize: { value: sizeBase },
+      uArc: { value: arc },
+      uColor: { value: new THREE.Color(color) },
+    },
+    vertexShader: `
+      attribute vec3 aBase;
+      attribute float aPhase;
+      uniform float uTime;
+      uniform float uLife;
+      uniform float uPixelRatio;
+      uniform float uSize;
+      uniform float uArc;
+      varying float vAlpha;
+      void main() {
+        float cycle = mod(uTime + aPhase * uLife, uLife);
+        float t01 = cycle / uLife;
+        // A linear rise (uArc 0) or a symmetric up-and-down arc (uArc 1),
+        // mixed by config — both stay within [0, aBase.y] for t01 in [0, 1],
+        // so the point never dips below the water line partway through.
+        float heightCurve = mix(t01, 4.0 * t01 * (1.0 - t01), uArc);
+        vec3 pos = vec3(aBase.x * t01, aBase.y * heightCurve, aBase.z * t01);
+        // Ascending edges, then inverted — smoothstep's result is undefined
+        // in GLSL ES when edge0 >= edge1, so the fade-out can't just swap
+        // the arguments of an ascending call.
+        vAlpha = smoothstep(0.0, 0.12, t01) * (1.0 - smoothstep(0.55, 1.0, t01));
+        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+        gl_PointSize = uSize * (1.0 - t01 * 0.5) * uPixelRatio / max(-mvPosition.z, 0.001);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying float vAlpha;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float a = (1.0 - smoothstep(0.0, 0.5, d)) * vAlpha;
+        gl_FragColor = vec4(uColor, a);
+      }
+    `,
+  });
+
+  const points = new THREE.Points(geometry, material);
+  // The `position` attribute above is a placeholder, so the computed
+  // bounding sphere sits at the origin — frustum culling against that would
+  // clip the whole system as soon as its actual (offset) origin left center
+  // frame.
+  points.frustumCulled = false;
+  return { points, material };
+}
+
+function createBoat(
+  palette: {
+    hull: THREE.Color;
+    boot: THREE.Color;
+    antifouling: THREE.Color;
+    deck: THREE.ColorRepresentation;
+    mast: THREE.ColorRepresentation;
+    sail: THREE.ColorRepresentation;
+  },
+  isMobile: boolean,
+  pixelRatio: number,
+) {
   const group = new THREE.Group();
   const beam = 1.7; // distance between the two hulls
   const hullLength = 2.6;
@@ -211,7 +468,11 @@ function createBoat(palette: {
   const hullWidth = 0.32;
 
   for (const side of [-1, 1]) {
-    const hull = createHull(hullLength, hullHeight, hullWidth, palette.hull);
+    const hull = createHull(hullLength, hullHeight, hullWidth, {
+      hull: palette.hull,
+      boot: palette.boot,
+      antifouling: palette.antifouling,
+    });
     hull.position.z = side * (beam / 2);
     group.add(hull);
   }
@@ -239,6 +500,9 @@ function createBoat(palette: {
   boom.position.set(-hullLength * 0.08 + hullLength * 0.17, 0.4, 0);
   group.add(boom);
 
+  const mastTop = new THREE.Vector3(mast.position.x, 0.12 + mastHeight, 0);
+  const bowPoint = new THREE.Vector3(hullLength * 0.46, 0.12, 0);
+
   const sailShape = new THREE.Shape();
   sailShape.moveTo(0, 0);
   sailShape.lineTo(0, mastHeight * 0.92);
@@ -250,13 +514,109 @@ function createBoat(palette: {
   sail.rotation.y = Math.PI / 2;
   group.add(sail);
 
-  return { group, sailMaterial: sail.material as THREE.ShaderMaterial };
+  // Jib: a second, smaller headsail forward of the mast — the detail that
+  // reads as "sailboat under way" in silhouette rather than "sail on a
+  // stick". Built as three explicit points rather than the mainsail's
+  // flat-shape-plus-rotation trick: that trick maps the shape's local width
+  // into world Z (sideways) rather than along the boat's own length, which
+  // reads fine for one sail but would leave a second one spanning sideways
+  // and visually disconnected from the mast instead of looking like a jib.
+  // Here the luff genuinely runs from the bow up the forestay to the mast;
+  // only the clew is swept out to the side — a jib sheeted out, not a jib
+  // floating loose — which also keeps it clear of the mainsail's footprint
+  // from this camera angle.
+  const jibHead = new THREE.Vector3(mast.position.x, 0.12 + mastHeight * 0.66, 0);
+  const jibClew = new THREE.Vector3(hullLength * 0.14, 0.15, beam * 0.3);
+  const jibGeometry = new THREE.BufferGeometry();
+  jibGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [
+        bowPoint.x, bowPoint.y, bowPoint.z,
+        jibHead.x, jibHead.y, jibHead.z,
+        jibClew.x, jibClew.y, jibClew.z,
+      ],
+      3,
+    ),
+  );
+  jibGeometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 0], 2));
+  jibGeometry.setIndex([0, 1, 2]);
+  const jib = new THREE.Mesh(jibGeometry, createSailMaterial(palette.sail));
+  group.add(jib);
+
+  const rigging = createRigging(
+    {
+      mastTop,
+      bow: bowPoint,
+      stern: new THREE.Vector3(-hullLength * 0.46, 0.12, 0),
+      shroudPort: new THREE.Vector3(mast.position.x, 0.12, -beam * 0.42),
+      shroudStbd: new THREE.Vector3(mast.position.x, 0.12, beam * 0.42),
+    },
+    0xe7edf0,
+  );
+  group.add(rigging);
+
+  // Bow spray and a trailing stern wake — both children of the boat group,
+  // so they inherit its position and heading for free and only need to be
+  // authored in the boat's own local space.
+  const spray = createParticleSystem({
+    count: isMobile ? 22 : 40,
+    life: 0.9,
+    sizeBase: 9,
+    arc: 1,
+    pixelRatio,
+    color: 0xf6fbfa,
+    makeBase: () => {
+      const z = (Math.random() * 2 - 1) * beam * 0.6;
+      const out = Math.sign(z || 1) * (0.12 + Math.random() * 0.3);
+      // aBase.y is now the droplet's literal peak height (the arc curve
+      // returns to exactly 0 by the end of its life either way), so this is
+      // a modest hop rather than a magic constant tuned against a fall rate.
+      return new THREE.Vector3(-0.15 - Math.random() * 0.25, 0.08 + Math.random() * 0.14, z + out);
+    },
+  });
+  spray.points.position.set(hullLength * 0.47, 0.05, 0);
+  group.add(spray.points);
+
+  const wake = createParticleSystem({
+    count: isMobile ? 28 : 52,
+    life: 3.4,
+    sizeBase: 22,
+    arc: 0,
+    pixelRatio,
+    color: 0xdfeceb,
+    makeBase: () => {
+      const z = (Math.random() * 2 - 1) * beam * 0.95;
+      return new THREE.Vector3(-(0.6 + Math.random() * 2.1), 0.02, z);
+    },
+  });
+  wake.points.position.set(-hullLength * 0.5, 0, 0);
+  group.add(wake.points);
+
+  return {
+    group,
+    sailMaterials: [sail.material as THREE.ShaderMaterial, jib.material as THREE.ShaderMaterial],
+    particleMaterials: [spray.material, wake.material],
+  };
 }
 
 export interface CatamaranSceneOptions {
   /** Skip the render loop after the first frame — respects prefers-reduced-motion without hiding the scene. */
   reducedMotion: boolean;
   onReady?: () => void;
+}
+
+/** Disposes a mesh/line/points object's geometry and material(s) — duck-typed so it covers every Object3D kind the scene uses, not just THREE.Mesh. */
+function disposeObject(obj: THREE.Object3D) {
+  const withResources = obj as unknown as {
+    geometry?: THREE.BufferGeometry;
+    material?: THREE.Material | THREE.Material[];
+  };
+  withResources.geometry?.dispose();
+  if (withResources.material) {
+    const mats = Array.isArray(withResources.material) ? withResources.material : [withResources.material];
+    for (const m of mats) m.dispose();
+  }
 }
 
 /** Imperative Three.js setup, deliberately not react-three-fiber — one scene, mounted once, no reconciler needed. */
@@ -267,6 +627,7 @@ export default function mountCatamaranScene(
 ): () => void {
   const isMobile = window.innerWidth < 768;
 
+  const pixelRatio = Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2);
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true,
@@ -274,7 +635,7 @@ export default function mountCatamaranScene(
     powerPreference: isMobile ? "low-power" : "high-performance",
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
+  renderer.setPixelRatio(pixelRatio);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 60);
@@ -315,12 +676,18 @@ export default function mountCatamaranScene(
   });
   scene.add(ocean);
 
-  const { group: boat, sailMaterial } = createBoat({
-    hull: navy700,
-    deck: sand200,
-    mast: navy900,
-    sail: 0xfaf7f0,
-  });
+  const { group: boat, sailMaterials, particleMaterials } = createBoat(
+    {
+      hull: navy700,
+      boot: sand400,
+      antifouling: navy900,
+      deck: sand200,
+      mast: navy900,
+      sail: 0xfaf7f0,
+    },
+    isMobile,
+    pixelRatio,
+  );
   // A small, distant silhouette near the horizon rather than a foreground
   // centrepiece — the composition the text has to share the frame with. Fixed
   // once here; the render loop only ever touches boat.position.y (the ride
@@ -333,7 +700,11 @@ export default function mountCatamaranScene(
   boat.rotation.y = Math.PI * 0.62;
   scene.add(boat);
 
-  let frame = 0;
+  // A steady leeward heel, as if under sail power, rather than a boat that
+  // only ever bobs level — waves add roll and pitch on top of this baseline.
+  const baseHeel = -0.085;
+  const basePitch = -0.02;
+
   let raf = 0;
   let running = true;
   let readySent = false;
@@ -350,14 +721,19 @@ export default function mountCatamaranScene(
   function render() {
     const t = clock.getElapsedTime();
     oceanMaterial.uniforms.uTime.value = t;
-    sailMaterial.uniforms.uTime.value = t;
+    for (const m of sailMaterials) m.uniforms.uTime.value = t;
+    for (const m of particleMaterials) m.uniforms.uTime.value = t;
 
     const h = waveHeight(boat.position.x, boat.position.z, t);
     const hFwd = waveHeight(boat.position.x + 0.6, boat.position.z, t);
     const hSide = waveHeight(boat.position.x, boat.position.z + 0.6, t);
     boat.position.y = h;
-    boat.rotation.x = (h - hFwd) * 0.4;
-    boat.rotation.z = (hSide - h) * 0.4;
+    // A slow, gentle drift on top of the heel — gusts easing rather than a
+    // fixed lean — plus the wave-induced component from the height sampled
+    // just ahead of and beside the hull.
+    const heelDrift = Math.sin(t * 0.17) * 0.025;
+    boat.rotation.x = basePitch + (h - hFwd) * 0.4;
+    boat.rotation.z = baseHeel + heelDrift + (hSide - h) * 0.4;
 
     // Small, slow drift rather than an orbit — ambient, not a product demo spin.
     camera.position.x = basePos.x + Math.sin(t * 0.08) * 0.5;
@@ -375,7 +751,6 @@ export default function mountCatamaranScene(
   function loop() {
     if (!running) return;
     render();
-    frame++;
     if (!options.reducedMotion) raf = requestAnimationFrame(loop);
   }
 
@@ -434,13 +809,7 @@ export default function mountCatamaranScene(
     document.removeEventListener("visibilitychange", updateRunning);
     canvas.removeEventListener("webglcontextlost", handleContextLost);
 
-    scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) m.dispose();
-      }
-    });
+    scene.traverse(disposeObject);
     renderer.dispose();
   };
 }
