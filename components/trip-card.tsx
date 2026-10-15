@@ -25,12 +25,12 @@ export function TripCard({ trip }: { trip: TripListItem }) {
   return (
     <Link
       href={`/trips/${trip.slug}`}
-      className="group flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface)] transition-shadow hover:shadow-[0_8px_30px_rgba(10,22,40,0.08)]"
+      className="group flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface)] transition-[box-shadow,transform] duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(10,22,40,0.14)]"
     >
       <GradientHero
         from={trip.heroFrom}
         to={trip.heroTo}
-        className="h-40 shrink-0"
+        className="h-40 shrink-0 transition-transform duration-500 ease-out group-hover:scale-[1.04]"
       >
         <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4">
           <p className="text-sm font-medium text-white/90">
