@@ -99,11 +99,11 @@ export function ButtonLink({
   className?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-colors";
+    "inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-[background-color,border-color,opacity,transform,box-shadow] duration-200 active:scale-[0.97]";
   const styles =
     variant === "primary"
-      ? "bg-[var(--accent-strong)] text-[var(--accent-contrast)] hover:opacity-90"
-      : "border border-[var(--color-line)] hover:border-navy-600";
+      ? "bg-[var(--accent-strong)] text-[var(--accent-contrast)] hover:opacity-90 hover:shadow-[0_6px_20px_rgba(10,22,40,0.18)]"
+      : "border border-[var(--color-line)] hover:border-navy-600 hover:-translate-y-px";
   return (
     <Link href={href} className={`${base} ${styles} ${className}`}>
       {children}
@@ -120,12 +120,12 @@ export function Button({
   variant?: "primary" | "secondary" | "quiet";
 }) {
   const base =
-    "inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50";
+    "inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-medium transition-[background-color,border-color,opacity,transform,box-shadow,color] duration-200 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100";
   const styles =
     variant === "primary"
-      ? "bg-[var(--accent-strong)] text-[var(--accent-contrast)] hover:opacity-90"
+      ? "bg-[var(--accent-strong)] text-[var(--accent-contrast)] hover:opacity-90 hover:shadow-[0_6px_20px_rgba(10,22,40,0.18)]"
       : variant === "secondary"
-        ? "border border-[var(--color-line)] hover:border-navy-600"
+        ? "border border-[var(--color-line)] hover:border-navy-600 hover:-translate-y-px"
         : "text-[var(--color-ink-muted)] hover:text-navy-900";
   return (
     <button className={`${base} ${styles} ${className}`} {...props}>

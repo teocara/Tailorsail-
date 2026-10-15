@@ -122,3 +122,27 @@ a {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
+
+/* Scroll-reveal, driven by `components/reveal.tsx`. The element is always
+   present in the HTML — only its opacity/transform change — so hidden text
+   is still real text to a crawler or a JS-disabled view. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+}

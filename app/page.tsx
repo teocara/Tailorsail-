@@ -12,7 +12,8 @@ import {
   GradientHero,
   Section,
 } from "@/components/ui";
-import { CatamaranHero } from "@/components/catamaran-hero";
+import { HeroVideo } from "@/components/hero-video";
+import { Reveal } from "@/components/reveal";
 import { perRequest } from "@/lib/render-mode";
 
 const PILLARS = [
@@ -56,11 +57,13 @@ export default async function HomePage() {
         {/*
           Positioned absolute, after GradientHero's own gradient layers and
           before Container in DOM order — positioned siblings paint in DOM
-          order within a stacking context, so the boat sits above the
+          order within a stacking context, so the footage sits above the
           gradient and Container (also `relative`) still paints on top of it,
-          keeping the text and search box readable and clickable.
+          keeping the text and search box readable and clickable. The
+          gradient itself stays underneath as the fallback background for
+          the moment before the poster image has painted.
         */}
-        <CatamaranHero />
+        <HeroVideo />
         <Container className="relative py-20 sm:py-28">
           <div className="max-w-2xl">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
@@ -86,21 +89,23 @@ export default async function HomePage() {
       <Section>
         <Container>
           <div className="grid gap-6 lg:grid-cols-3">
-            {PILLARS.map((pillar) => (
-              <Card key={pillar.title} className="flex flex-col p-6">
-                <h2 className="font-[family-name:var(--font-display)] text-xl leading-snug">
-                  {pillar.title}
-                </h2>
-                <p className="mt-3 flex-1 text-sm text-[var(--color-ink-muted)]">
-                  {pillar.body}
-                </p>
-                <Link
-                  href={pillar.link.href}
-                  className="mt-4 text-sm text-[var(--accent-strong)] hover:underline"
-                >
-                  {pillar.link.label} →
-                </Link>
-              </Card>
+            {PILLARS.map((pillar, i) => (
+              <Reveal key={pillar.title} delayMs={i * 90}>
+                <Card className="flex h-full flex-col p-6 transition-[box-shadow,transform] duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(10,22,40,0.1)]">
+                  <h2 className="font-[family-name:var(--font-display)] text-xl leading-snug">
+                    {pillar.title}
+                  </h2>
+                  <p className="mt-3 flex-1 text-sm text-[var(--color-ink-muted)]">
+                    {pillar.body}
+                  </p>
+                  <Link
+                    href={pillar.link.href}
+                    className="mt-4 text-sm text-[var(--accent-strong)] hover:underline"
+                  >
+                    {pillar.link.label} →
+                  </Link>
+                </Card>
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -109,38 +114,42 @@ export default async function HomePage() {
       {/* ----------------------------------------------------- Destinations */}
       <Section className="bg-[var(--color-surface-sunk)]">
         <Container>
-          <Eyebrow>Where we sail</Eyebrow>
-          <h2 className="mt-2 text-3xl">Six cruising grounds</h2>
-          <p className="mt-3 max-w-2xl text-[var(--color-ink-muted)]">
-            We sell a small number of places and know them properly, rather than
-            a long list we have read about. Each one has a briefing covering the
-            wind, the season, the permits and what it asks of you.
-          </p>
+          <Reveal>
+            <Eyebrow>Where we sail</Eyebrow>
+            <h2 className="mt-2 text-3xl">Six cruising grounds</h2>
+            <p className="mt-3 max-w-2xl text-[var(--color-ink-muted)]">
+              We sell a small number of places and know them properly, rather
+              than a long list we have read about. Each one has a briefing
+              covering the wind, the season, the permits and what it asks of
+              you.
+            </p>
+          </Reveal>
 
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {destinations.map((destination) => (
-              <Link
-                key={destination.id}
-                href={`/destinations/${destination.slug}`}
-                className="group overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-white transition-shadow hover:shadow-[0_8px_30px_rgba(10,22,40,0.08)]"
-              >
-                <GradientHero
-                  from={destination.heroFrom}
-                  to={destination.heroTo}
-                  className="h-28"
-                />
-                <div className="p-5">
-                  <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
-                    {destination.region.name}
-                  </p>
-                  <p className="font-[family-name:var(--font-display)] text-lg">
-                    {destination.name}
-                  </p>
-                  <p className="mt-1 line-clamp-2 text-sm text-[var(--color-ink-muted)]">
-                    {destination.tagline}
-                  </p>
-                </div>
-              </Link>
+            {destinations.map((destination, i) => (
+              <Reveal key={destination.id} delayMs={(i % 3) * 90}>
+                <Link
+                  href={`/destinations/${destination.slug}`}
+                  className="group block overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-white transition-[box-shadow,transform] duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(10,22,40,0.1)]"
+                >
+                  <GradientHero
+                    from={destination.heroFrom}
+                    to={destination.heroTo}
+                    className="h-28 transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+                  />
+                  <div className="p-5">
+                    <p className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                      {destination.region.name}
+                    </p>
+                    <p className="font-[family-name:var(--font-display)] text-lg">
+                      {destination.name}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-[var(--color-ink-muted)]">
+                      {destination.tagline}
+                    </p>
+                  </div>
+                </Link>
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -149,19 +158,21 @@ export default async function HomePage() {
       {/* --------------------------------------------------------- Featured */}
       <Section>
         <Container>
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <Eyebrow>Available now</Eyebrow>
-              <h2 className="mt-2 text-3xl">Trips we would book ourselves</h2>
+          <Reveal>
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <Eyebrow>Available now</Eyebrow>
+                <h2 className="mt-2 text-3xl">Trips we would book ourselves</h2>
+              </div>
+              <ButtonLink href="/trips" variant="secondary">
+                All trips
+              </ButtonLink>
             </div>
-            <ButtonLink href="/trips" variant="secondary">
-              All trips
-            </ButtonLink>
-          </div>
+          </Reveal>
 
-          <div className="mt-8">
+          <Reveal delayMs={120} className="mt-8">
             <TripGrid trips={featured} />
-          </div>
+          </Reveal>
         </Container>
       </Section>
 
@@ -170,26 +181,28 @@ export default async function HomePage() {
         <div data-brand="crew">
           <Section className="bg-[#fff8f4]">
             <Container>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div className="max-w-2xl">
-                  <Eyebrow>Tailorsail Crew</Eyebrow>
-                  <h2 className="mt-2 text-3xl">
-                    For people in their twenties who would rather not book a
-                    hotel
-                  </h2>
-                  <p className="mt-3 text-[var(--color-ink-muted)]">
-                    A cabin each, a boat full of people you have not met yet,
-                    and the best anchorages in Ibiza and Hvar. Most of the boat
-                    books solo — that is the normal way to do this, not the
-                    brave one.
-                  </p>
+              <Reveal>
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div className="max-w-2xl">
+                    <Eyebrow>Tailorsail Crew</Eyebrow>
+                    <h2 className="mt-2 text-3xl">
+                      For people in their twenties who would rather not book a
+                      hotel
+                    </h2>
+                    <p className="mt-3 text-[var(--color-ink-muted)]">
+                      A cabin each, a boat full of people you have not met
+                      yet, and the best anchorages in Ibiza and Hvar. Most of
+                      the boat books solo — that is the normal way to do
+                      this, not the brave one.
+                    </p>
+                  </div>
+                  <ButtonLink href="/crew">Explore Crew</ButtonLink>
                 </div>
-                <ButtonLink href="/crew">Explore Crew</ButtonLink>
-              </div>
+              </Reveal>
 
-              <div className="mt-8">
+              <Reveal delayMs={120} className="mt-8">
                 <TripGrid trips={crew} />
-              </div>
+              </Reveal>
             </Container>
           </Section>
         </div>
@@ -199,45 +212,48 @@ export default async function HomePage() {
       <Section>
         <Container>
           <div className="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
-            <div>
-              <Eyebrow>Learn first</Eyebrow>
-              <h2 className="mt-2 text-3xl">
-                The reason most people never try sailing is that nobody told
-                them what it involves
-              </h2>
-              <p className="mt-4 text-[var(--color-ink-muted)]">
-                So we tell you first. Our introduction course is free and takes
-                two hours. If you want to come home able to sail the boat
-                yourself, you can take a certificate during the week without
-                changing the trip you booked.
-              </p>
-              <ButtonLink href="/courses" className="mt-6">
-                See all courses
-              </ButtonLink>
-            </div>
+            <Reveal>
+              <div>
+                <Eyebrow>Learn first</Eyebrow>
+                <h2 className="mt-2 text-3xl">
+                  The reason most people never try sailing is that nobody
+                  told them what it involves
+                </h2>
+                <p className="mt-4 text-[var(--color-ink-muted)]">
+                  So we tell you first. Our introduction course is free and
+                  takes two hours. If you want to come home able to sail the
+                  boat yourself, you can take a certificate during the week
+                  without changing the trip you booked.
+                </p>
+                <ButtonLink href="/courses" className="mt-6">
+                  See all courses
+                </ButtonLink>
+              </div>
+            </Reveal>
 
             <div className="space-y-4">
-              {courses.map((course) => (
-                <Link
-                  key={course.id}
-                  href={`/courses/${course.slug}`}
-                  className="block rounded-[var(--radius-card)] border border-[var(--color-line)] p-5 transition-colors hover:border-[var(--accent-strong)]"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="font-[family-name:var(--font-display)] text-lg">
-                      {course.name}
+              {courses.map((course, i) => (
+                <Reveal key={course.id} delayMs={i * 90}>
+                  <Link
+                    href={`/courses/${course.slug}`}
+                    className="block rounded-[var(--radius-card)] border border-[var(--color-line)] p-5 transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-[0_10px_30px_rgba(10,22,40,0.08)]"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="font-[family-name:var(--font-display)] text-lg">
+                        {course.name}
+                      </p>
+                      <p className="text-sm text-[var(--color-ink-muted)]">
+                        {course.priceCents === 0
+                          ? "Free"
+                          : `€${course.priceCents / 100}`}{" "}
+                        · {course.durationHours}h
+                      </p>
+                    </div>
+                    <p className="mt-1.5 text-sm text-[var(--color-ink-muted)]">
+                      {course.summary}
                     </p>
-                    <p className="text-sm text-[var(--color-ink-muted)]">
-                      {course.priceCents === 0
-                        ? "Free"
-                        : `€${course.priceCents / 100}`}{" "}
-                      · {course.durationHours}h
-                    </p>
-                  </div>
-                  <p className="mt-1.5 text-sm text-[var(--color-ink-muted)]">
-                    {course.summary}
-                  </p>
-                </Link>
+                  </Link>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -247,8 +263,10 @@ export default async function HomePage() {
       {/* ----------------------------------------------------- How it works */}
       <Section className="bg-[var(--color-surface-sunk)]">
         <Container>
-          <Eyebrow>How it works</Eyebrow>
-          <h2 className="mt-2 text-3xl">Four steps, no phone calls</h2>
+          <Reveal>
+            <Eyebrow>How it works</Eyebrow>
+            <h2 className="mt-2 text-3xl">Four steps, no phone calls</h2>
+          </Reveal>
           <ol className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {[
               {
@@ -271,15 +289,17 @@ export default async function HomePage() {
                 title: "Ask us anything",
                 body: "One thread for the whole trip. We answer, and we chase the marina so you do not have to.",
               },
-            ].map((item) => (
+            ].map((item, i) => (
               <li key={item.step}>
-                <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--accent-strong)]">
-                  {item.step}
-                </p>
-                <p className="mt-2 font-medium">{item.title}</p>
-                <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                  {item.body}
-                </p>
+                <Reveal delayMs={i * 90}>
+                  <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--accent-strong)]">
+                    {item.step}
+                  </p>
+                  <p className="mt-2 font-medium">{item.title}</p>
+                  <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
+                    {item.body}
+                  </p>
+                </Reveal>
               </li>
             ))}
           </ol>
