@@ -12,7 +12,7 @@ import {
   GradientHero,
   Section,
 } from "@/components/ui";
-import { CatamaranHero } from "@/components/catamaran-hero";
+import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
 import { perRequest } from "@/lib/render-mode";
 
@@ -57,11 +57,13 @@ export default async function HomePage() {
         {/*
           Positioned absolute, after GradientHero's own gradient layers and
           before Container in DOM order — positioned siblings paint in DOM
-          order within a stacking context, so the boat sits above the
+          order within a stacking context, so the footage sits above the
           gradient and Container (also `relative`) still paints on top of it,
-          keeping the text and search box readable and clickable.
+          keeping the text and search box readable and clickable. The
+          gradient itself stays underneath as the fallback background for
+          the moment before the poster image has painted.
         */}
-        <CatamaranHero />
+        <HeroVideo />
         <Container className="relative py-20 sm:py-28">
           <div className="max-w-2xl">
             <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/70">
