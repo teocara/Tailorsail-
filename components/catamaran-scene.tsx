@@ -135,9 +135,13 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
         // Whitecap foam: a noisy threshold on slope steepness, so crests
         // break into patches of foam rather than a single clean waterline —
         // the same hash-sparkle trick as the sun glints, reused for a
-        // different purpose.
+        // different purpose. The three configured WAVES combine to a slope
+        // magnitude of at most ~0.54 (and only at a near-impossible perfect
+        // alignment of all three gradients) — the threshold is tuned against
+        // that actual ceiling, not an arbitrary round number, so foam can
+        // actually trigger at the steeper, more typical crests.
         float foamNoise = hash(floor(vWorldPos.xz * 5.0 + uTime * 0.6));
-        float foam = smoothstep(0.55, 0.95, vSteepness) * smoothstep(0.3, 0.8, foamNoise);
+        float foam = smoothstep(0.26, 0.46, vSteepness) * smoothstep(0.3, 0.8, foamNoise);
         color = mix(color, vec3(0.96, 0.98, 0.99), foam * 0.85);
 
         float dist = length(cameraPosition - vWorldPos);
