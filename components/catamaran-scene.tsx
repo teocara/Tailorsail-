@@ -74,6 +74,7 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
       uniform float uTime;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
+      varying float vSteepness;
       ${GLSL_WAVE_FUNCTION}
 
       void main() {
@@ -89,6 +90,11 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
         vec3 tangentX = normalize(vec3(eps, hx - h, 0.0));
         vec3 tangentZ = normalize(vec3(0.0, hz - h, eps));
         vNormal = normalize(cross(tangentZ, tangentX));
+        // How steep the local slope is, reused in the fragment shader to
+        // decide where whitecap foam breaks — a crest only foams where it's
+        // both high and steep, not just high (a long, gentle swell crest
+        // shouldn't foam the way a short, sharp one does).
+        vSteepness = length(vec2(hx - h, hz - h)) / eps;
 
         vec4 worldPos = modelMatrix * vec4(pos, 1.0);
         vWorldPos = worldPos.xyz;
@@ -103,8 +109,10 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
       uniform vec3 uFogColor;
       uniform float uFogNear;
       uniform float uFogFar;
+      uniform float uTime;
       varying vec3 vNormal;
       varying vec3 vWorldPos;
+      varying float vSteepness;
 
       // Cheap hash so the sun glint breaks into glints instead of one
       // uniform highlight — texture-free sparkle.
@@ -124,6 +132,14 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
         float sparkle = step(0.985, hash(floor(vWorldPos.xz * 9.0)));
         vec3 color = base + uSun * spec * (0.5 + sparkle * 1.6);
 
+        // Whitecap foam: a noisy threshold on slope steepness, so crests
+        // break into patches of foam rather than a single clean waterline —
+        // the same hash-sparkle trick as the sun glints, reused for a
+        // different purpose.
+        float foamNoise = hash(floor(vWorldPos.xz * 5.0 + uTime * 0.6));
+        float foam = smoothstep(0.55, 0.95, vSteepness) * smoothstep(0.3, 0.8, foamNoise);
+        color = mix(color, vec3(0.96, 0.98, 0.99), foam * 0.85);
+
         float dist = length(cameraPosition - vWorldPos);
         float fog = smoothstep(uFogNear, uFogFar, dist);
         color = mix(color, uFogColor, fog);
@@ -138,6 +154,42 @@ function createOcean(segments: number, colors: { deep: THREE.Color; shallow: THR
 
 function easeInOut(t: number): number {
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * A soft, warm glow hung near the sun's direction — a billboarded plane with
+ * a radial falloff computed in the shader rather than a texture, matching
+ * the "nothing imported" rule the rest of the scene follows. Re-oriented to
+ * face the camera every frame in the render loop (plain meshes don't
+ * billboard themselves the way a `THREE.Sprite` does, but a `Sprite` can't
+ * take an arbitrary `ShaderMaterial` as cleanly, so a manually-billboarded
+ * plane is the simpler path here).
+ */
+function createSunGlow(color: THREE.ColorRepresentation) {
+  const geometry = new THREE.PlaneGeometry(1, 1);
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uColor: { value: new THREE.Color(color) } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      void main() {
+        float d = length(vUv - vec2(0.5)) * 2.0;
+        float glow = pow(max(1.0 - d, 0.0), 2.2);
+        gl_FragColor = vec4(uColor, glow * 0.8);
+      }
+    `,
+  });
+  return new THREE.Mesh(geometry, material);
 }
 
 /** Beam (half-width) as a fraction of max, along the hull's length: full amidships, tapering to a point at the bow, eased in from a slightly narrower transom. */
@@ -676,6 +728,14 @@ export default function mountCatamaranScene(
   });
   scene.add(ocean);
 
+  // A warm glow near the horizon — a background depth cue, kept subtle and
+  // off to the same side as the boat so it doesn't compete with the text
+  // column on the left.
+  const sunGlow = createSunGlow(sand400);
+  sunGlow.scale.setScalar(9);
+  sunGlow.position.set(-4, 3.4, -16);
+  scene.add(sunGlow);
+
   const { group: boat, sailMaterials, particleMaterials } = createBoat(
     {
       hull: navy700,
@@ -735,10 +795,20 @@ export default function mountCatamaranScene(
     boat.rotation.x = basePitch + (h - hFwd) * 0.4;
     boat.rotation.z = baseHeel + heelDrift + (hSide - h) * 0.4;
 
-    // Small, slow drift rather than an orbit — ambient, not a product demo spin.
-    camera.position.x = basePos.x + Math.sin(t * 0.08) * 0.5;
-    camera.position.y = basePos.y + Math.sin(t * 0.12) * 0.15;
+    // Small, slow drift rather than an orbit — ambient, not a product demo
+    // spin. The period is slower than the original (0.055 vs 0.08) for a
+    // more deliberate feel, but the amplitude stays put: this is the
+    // envelope already verified to keep the boat clear of the text column
+    // at every point in the cycle, and widening it risks swinging the boat
+    // back over the paragraph text at the cycle's extremes.
+    camera.position.x = basePos.x + Math.sin(t * 0.055) * 0.5;
+    camera.position.y = basePos.y + Math.sin(t * 0.09) * 0.15;
     camera.lookAt(lookTarget);
+
+    // The glow has no "back", so facing it at the camera each frame is
+    // enough to billboard it without the extra Sprite-vs-ShaderMaterial
+    // plumbing a true sprite would need.
+    sunGlow.quaternion.copy(camera.quaternion);
 
     renderer.render(scene, camera);
 
