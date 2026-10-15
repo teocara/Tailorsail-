@@ -13,20 +13,31 @@ import { BASE_PATH } from "@/lib/static-mode";
  * nothing for autoplay-with-sound restrictions to block. The poster frame
  * renders immediately and stays the only thing shown for
  * `prefers-reduced-motion` or while the video element is still loading.
+ *
+ * The `<video>` element itself — not just its playback — is gated behind a
+ * `mountVideo` flag set in an effect, the same gate `catamaran-hero.tsx` used
+ * for its canvas. This is a client component, so Next still renders its
+ * initial markup server-side: a `<video preload="auto">` with real `<source>`
+ * children present from the first paint would let the browser's HTML preload
+ * scanner start fetching the multi-megabyte file before any JS has run, let
+ * alone confirmed the visitor allows motion. Keeping the element itself out
+ * of the tree until that's confirmed is the only way to actually prevent the
+ * fetch, not just the playback.
  */
 export function HeroVideo() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const [mountVideo, setMountVideo] = useState(false);
 
   useEffect(() => {
-    setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reducedMotion) setMountVideo(true);
   }, []);
 
   useEffect(() => {
     const container = containerRef.current;
     const video = videoRef.current;
-    if (!container || !video || reducedMotion) return;
+    if (!container || !video || !mountVideo) return;
 
     // Two independent reasons to pause, same as the 3D hero it replaces:
     // scrolled out of view, or the tab itself is hidden. Both have to clear
@@ -62,18 +73,18 @@ export function HeroVideo() {
       document.removeEventListener("visibilitychange", updatePlayback);
       observer.disconnect();
     };
-  }, [reducedMotion]);
+  }, [mountVideo]);
 
   return (
     <div ref={containerRef} aria-hidden className="absolute inset-0 overflow-hidden">
       {/* Always present, so there's something to show before the video
-          loads, if it fails, and permanently for prefers-reduced-motion. */}
+          mounts, if it fails, and permanently for prefers-reduced-motion. */}
       <img
         src={`${BASE_PATH}/video/hero-poster.jpg`}
         alt=""
         className="h-full w-full object-cover"
       />
-      {!reducedMotion ? (
+      {mountVideo ? (
         <video
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover"
